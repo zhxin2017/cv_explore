@@ -6,13 +6,13 @@ class FilteredLinear(nn.Module):
     def __init__(self, in_dim, out_dim):
         super().__init__()
         self.filter_linear = nn.Linear(in_dim, out_dim)
-        self.filter_sigmoid = nn.Sigmoid()
+        self.filter_relu = nn.ReLU()
         self.forward_linear = nn.Linear(in_dim, out_dim)
         self.forward_relu = nn.ReLU()
         self.ln = nn.LayerNorm(out_dim)
 
     def forward(self, x):
-        filter_ = self.filter_sigmoid(self.filter_linear(x))
+        filter_ = self.filter_relu(self.filter_linear(x))
         forward = self.forward_relu(self.forward_linear(x))
         x = self.ln(filter_ * forward)
         return x
@@ -57,6 +57,7 @@ class MultiHeadAttention(nn.Module):
             attn_outs.append(attn_out)
         attn_outs = torch.concat(attn_outs, dim=-1)
         return attn_outs
+
 
 class Encoder(nn.Module):
     def __init__(self, n_head, n_layer, d, lv):
