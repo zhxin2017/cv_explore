@@ -13,7 +13,7 @@ def build_img_dict(annotation_file, img_dict_file, task='od'):
         instances = json.load(f)
     img_dict = {}
     for img in instances['images']:
-        img_dict[img['id']] = {'file_name': img['file_name'], 'shape': (img['height'], img['width']), 'objs': []}
+        img_dict[img['id']] = {'shape': (img['height'], img['width']), 'objs': []}
 
     for obj in instances['annotations']:
         if task == 'od':
