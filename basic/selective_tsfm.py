@@ -24,14 +24,17 @@ class SelectiveAttention(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.seq_len = lv
-        self.select_linear = nn.Linear(in_dim, lv)
-        self.select_sigmoid = nn.Sigmoid()
+        self.attn_linear = nn.Linear(in_dim, lv)
+        self.attn_relu = nn.ReLU()
         self.ln = nn.LayerNorm(in_dim)
         self.proj = FilteredLinear(in_dim, out_dim)
 
-    def forward(self, v, q):
-        attn = self.select_linear(q)
-        q = torch.bmm(attn, v)
+    def forward(self, v, q, mask=None):
+        attn = self.attn_relu(self.attn_linear(q))
+        if mask is not None:
+            q = torch.bmm(attn, v)
+        else:
+            q = torch.bmm(attn, v)
         q = self.ln(q)
         q = self.proj(q)
         return q
@@ -79,8 +82,8 @@ class Encoder(nn.Module):
 
 
 if __name__ == '__main__':
-    len_q = 8
-    len_v = 16
+    len_q = 64 * 64
+    len_v = 64 * 64
     d = 256
     batch = 3
     q = torch.rand([batch, len_q, d])
