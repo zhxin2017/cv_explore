@@ -1,5 +1,5 @@
 import time
-from basic import architect
+from basic import selective_tsfm
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
@@ -19,7 +19,7 @@ class Cls4(nn.Module):
         self.lv = lv
         self.dim = dim
         self.proj = nn.Linear(in_dim, dim)
-        self.tsfm = architect.Encoder(4, 4, dim, lv + 1)
+        self.tsfm = selective_tsfm.Encoder(4, 4, dim, lv + 1)
         self.pe_em = nn.Embedding(lv, dim)
         self.query_em = nn.Embedding(1, dim)
         self.cls_linear = nn.Linear(dim, 10)
