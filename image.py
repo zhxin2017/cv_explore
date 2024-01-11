@@ -19,7 +19,7 @@ def pad(wider_len, shorter_len, buffer_ratio, out_ratio):
     return wider_len_new, shorter_len_new, buffer_wider, buffer_shorter
 
 
-def pad_img(img, random_offset=True, buffer_ratio=0.2, content='random', out_ratio=1.0, channel_first=True):
+def pad_img(img, random_offset=True, buffer_ratio=0, content='random', out_ratio=1.0, channel_first=False):
     if channel_first:
         c, h, w = img.shape
     else:
