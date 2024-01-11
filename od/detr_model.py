@@ -102,9 +102,9 @@ class DETR(nn.Module):
 
         encoder_layers = []
         for i in range(n_enc_layer):
-            encoder_layers.append(EncoderLayer(d_cont, n_head))
+            encoder_layers.append(EncoderLayer(d_cont + self.d_pos_emb, n_head))
         self.enc_dec_proj = nn.Linear(d_cont + self.d_pos_emb, d_cont)
-        self.encoder = nn.ModuleList(*encoder_layers)
+        self.encoder = nn.ModuleList(encoder_layers)
 
         self.pos_delta_mlp = base.MLP(d_cont, 256, 2, 2)
         self.hw_delta_mlp = base.MLP(d_cont, 256, 2, 2)
@@ -115,34 +115,36 @@ class DETR(nn.Module):
         decoder_layers = []
         for i in range(n_dec_layer):
             if i == 0:
-                decoder_layers.append(DecoderLayer(n_head, d_cont, d_cont, omit_sa=True))
+                decoder_layers.append(DecoderLayer(n_head, self.d_cont * 2, d_cont, omit_sa=True))
             else:
-                decoder_layers.append(DecoderLayer(n_head, d_cont, d_cont))
-        self.decoder = nn.ModuleList(*decoder_layers)
+                decoder_layers.append(DecoderLayer(n_head, self.d_cont * 2, d_cont))
+        self.decoder = nn.ModuleList(decoder_layers)
 
     def forward(self, x):
         x = F.relu(self.cnn1(x))
         x = F.relu(self.cnn2(x))
         x = F.relu(self.cnn3(x))
+        x = x.permute([0, 2, 3, 1])
         x = self.cnn_ln(x)
+
         B, H, W, C = x.shape
 
-        positions = pe.gen_pos_2d(x)
+        positions = pe.gen_pos_2d(x, self.device).view(B, H * W, 2)
         pos_emb = self.pe_proj(positions)
+
+        x = x.view(B, H * W, self.d_cont)
         x = torch.concat((x, pos_emb), dim=-1)
 
-        x = x.view(B, H * W, C)
-
         for enc_layer in self.encoder:
-            x = enc_layer(x, x, x)
+            x = enc_layer(x)
 
-        x = F.layer_norm(F.relu(self.enc_dec_proj(x)), self.d_cont)
+        x = F.layer_norm(F.relu(self.enc_dec_proj(x)), [self.d_cont])
 
         anchors = self.anchor_emb(B)
 
         q_tgt_pos = self.pe_proj(anchors[..., :2])
         q_tgt_hw = self.hw_proj(anchors[..., 2:])
-        q_tgt_cont = torch.zeros(B, self.n_query, self.d_cont)
+        q_tgt_cont = torch.zeros(B, self.n_query, self.d_cont, device=self.device)
 
         for i, dec_layer in enumerate(self.decoder):
             k_src_pos = pos_emb
@@ -168,11 +170,11 @@ if __name__ == '__main__':
     # y = tsfm1(x)
     # print(y.shape)
 
-    q = torch.rand([4, 2000, 512])
-    k = torch.rand([4, 1000, 512])
-    v = torch.rand([4, 1000, 256])
-    # attn = CrossAttention(8, 512, 256)
-    # x = attn(q, k, v)
-    enc = EncoderLayer(256, 8)
-    x = enc(v)
-    print(x.shape)
+    device= torch.device('mps')
+
+    imgs = torch.rand([2, 3, 512, 512], device=device)
+    detr = DETR(256, device=device)
+    detr.to(device=device)
+    categories, anchors = detr(imgs)
+    print(categories.shape)
+    print(anchors.shape)
