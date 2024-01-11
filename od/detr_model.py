@@ -165,10 +165,6 @@ class DETR(nn.Module):
 
 
 if __name__ == '__main__':
-    # x = torch.rand([10, 6, 128])
-    # tsfm1 = TransformerEncoder(128, 256, 4, 4)
-    # y = tsfm1(x)
-    # print(y.shape)
 
     device= torch.device('mps')
 
