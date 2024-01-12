@@ -52,11 +52,11 @@ class Embedding1D(nn.Module):
         return emb.unsqueeze(0).repeat(B, 1, 1)
 
 
-def gen_pos_2d(x, device=torch.device('mps')):
+def gen_pos_2d(x, device=torch.device('mps'), feature_map_size=64):
     B, H, W, C = x.shape
     row_indices = torch.arange(H, device=device).unsqueeze(1).repeat(1, W).unsqueeze(-1)
     col_indices = torch.arange(W, device=device).unsqueeze(0).repeat(H, 1).unsqueeze(-1)
-    positions = torch.concat((row_indices / H, col_indices / W), dim=-1) * 0.5
+    positions = torch.concat((row_indices / feature_map_size, col_indices / feature_map_size), dim=-1) * 0.5
     positions = positions.unsqueeze(0).repeat(B, 1, 1, 1)
     return positions
 

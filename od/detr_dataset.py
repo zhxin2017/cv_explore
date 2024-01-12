@@ -8,7 +8,7 @@ from od.config_file import train_img_dir, val_img_dir
 
 
 class OdDataset(Dataset):
-    def __init__(self, img_dict, train=True, sample_num=None, resize=(192, 256), n_query=300, random_shift=True):
+    def __init__(self, img_dict, train=True, sample_num=None, resize=(384, 512), n_query=300, random_shift=True):
         self.sample_num = sample_num
         self.resize = resize
         self.random_shift = random_shift
@@ -21,6 +21,8 @@ class OdDataset(Dataset):
         for iid, img_info in self.img_dict.items():
             iscrowd = False
             objs = img_info['objs']
+            if len(objs) == 0:
+                continue
             for obj_ in objs:
                 if obj_['iscrowd'] == 1:
                     iscrowd = True
@@ -43,17 +45,18 @@ class OdDataset(Dataset):
         out_ratio = self.resize[0] / self.resize[1]
         img, offset_h, offset_w = image.pad_img(img, random_offset=self.random_shift, out_ratio=out_ratio)
 
-        bboxes, cids = [], []
+        boxes, cids = [], []
         for o in objs:
-            bboxes.append(o['bbox'])
+            boxes.append(o['bbox'])
             cids.append(o['category_id'])
 
-        bboxes = torch.tensor(bboxes)
+        boxes = torch.tensor(boxes)
 
         resize_factor = self.resize[0] / img.shape[0]
-        bboxes = box.xywh_to_xyxy(bboxes, offset_h, offset_w) * resize_factor
+        boxes = box.offset_box(boxes, offset_h, offset_w)
+        boxes = box.xywh_to_xyxy(boxes) * resize_factor
 
-        bboxes_padded, indices_padded = box.pad_bbox(bboxes, cids, self.n_query)
+        bboxes_padded, indices_padded = box.pad_bbox(boxes, cids, self.n_query)
 
         img = torch.permute(img, [2, 0, 1])
 

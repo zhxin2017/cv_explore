@@ -3,6 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 from model import base
 import pe
+from config_category import category_num
 
 
 def attention(q, k, v):
@@ -86,7 +87,7 @@ class DecoderLayer(nn.Module):
 
 
 class DETR(nn.Module):
-    def __init__(self, d_cont, n_head=8, n_enc_layer=6, n_dec_layer=6, n_query=300, n_category=80, device=torch.device('mps')):
+    def __init__(self, d_cont, n_head=8, n_enc_layer=6, n_dec_layer=6, n_query=300, device=torch.device('mps')):
         super().__init__()
         self.d_cont = d_cont
         self.d_pos_emb = d_cont // 2
@@ -110,7 +111,7 @@ class DETR(nn.Module):
         self.hw_delta_mlp = base.MLP(d_cont, 256, 2, 2)
         self.src_hw_mlp = base.MLP(d_cont, 256, self.d_pos_emb, 2)
         self.anchor_emb = pe.Embedding1D(n_query, 4, device)
-        self.classify_mlp = base.MLP(d_cont, 256, n_category, 2)
+        self.classify_mlp = base.MLP(d_cont, 256, category_num, 2)
 
         decoder_layers = []
         for i in range(n_dec_layer):
@@ -142,6 +143,9 @@ class DETR(nn.Module):
 
         anchors = self.anchor_emb(B)
 
+        xy = anchors[..., :2] + 0
+        wh = anchors[..., 2:] + 0
+
         q_tgt_pos = self.pe_proj(anchors[..., :2])
         q_tgt_hw = self.hw_proj(anchors[..., 2:])
         q_tgt_cont = torch.zeros(B, self.n_query, self.d_cont, device=self.device)
@@ -153,15 +157,16 @@ class DETR(nn.Module):
             q_tgt_cont = dec_layer(q_tgt_cont, q_tgt_pos, q_tgt_hw, k_src_pos, k_src_hw, v_src_cont)
             tgt_pos_delta = self.pos_delta_mlp(q_tgt_cont)
             tgt_hw_delta = self.hw_delta_mlp(q_tgt_cont)
-            anchors[..., :2] = anchors[..., :2] + tgt_pos_delta
-            anchors[..., 2:] = anchors[..., 2:] + tgt_hw_delta
+            xy = xy + tgt_pos_delta
+            wh = wh + tgt_hw_delta
+
             if i < self.n_dec_layer - 1:
                 q_tgt_pos = self.pe_proj(anchors[..., :2])
                 q_tgt_hw = self.hw_proj(anchors[..., 2:])
 
-        categories = self.classify_mlp(q_tgt_cont)
-
-        return categories, anchors
+        cls_logits = self.classify_mlp(q_tgt_cont)
+        boxes = torch.concat((xy, wh), dim=-1)
+        return boxes, cls_logits
 
 
 if __name__ == '__main__':
