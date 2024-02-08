@@ -146,12 +146,13 @@ class DETR(nn.Module):
         xy = anchors[..., :2] + 0
         wh = anchors[..., 2:] + 0
 
-        q_tgt_pos = self.pe_proj(anchors[..., :2])
-        q_tgt_hw = self.hw_proj(anchors[..., 2:])
+        q_tgt_pos = self.pe_proj(xy)
+        q_tgt_hw = self.hw_proj(wh)
         q_tgt_cont = torch.zeros(B, self.n_query, self.d_cont, device=self.device)
 
+        k_src_pos = pos_emb
+
         for i, dec_layer in enumerate(self.decoder):
-            k_src_pos = pos_emb
             k_src_hw = self.src_hw_mlp(x)
             v_src_cont = x
             q_tgt_cont = dec_layer(q_tgt_cont, q_tgt_pos, q_tgt_hw, k_src_pos, k_src_hw, v_src_cont)
@@ -161,8 +162,8 @@ class DETR(nn.Module):
             wh = wh + tgt_hw_delta
 
             if i < self.n_dec_layer - 1:
-                q_tgt_pos = self.pe_proj(anchors[..., :2])
-                q_tgt_hw = self.hw_proj(anchors[..., 2:])
+                q_tgt_pos = self.pe_proj(xy)
+                q_tgt_hw = self.hw_proj(wh)
 
         cls_logits = self.classify_mlp(q_tgt_cont)
         boxes = torch.concat((xy, wh), dim=-1)
@@ -177,5 +178,3 @@ if __name__ == '__main__':
     detr = DETR(256, device=device)
     detr.to(device=device)
     categories, anchors = detr(imgs)
-    print(categories.shape)
-    print(anchors.shape)

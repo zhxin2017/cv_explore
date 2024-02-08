@@ -56,7 +56,7 @@ def gen_pos_2d(x, device=torch.device('mps'), feature_map_size=64):
     B, H, W, C = x.shape
     row_indices = torch.arange(H, device=device).unsqueeze(1).repeat(1, W).unsqueeze(-1)
     col_indices = torch.arange(W, device=device).unsqueeze(0).repeat(H, 1).unsqueeze(-1)
-    positions = torch.concat((row_indices / feature_map_size, col_indices / feature_map_size), dim=-1) * 0.5
+    positions = torch.concat(((col_indices + 0.5) / feature_map_size, (row_indices + 0.5) / feature_map_size), dim=-1)
     positions = positions.unsqueeze(0).repeat(B, 1, 1, 1)
     return positions
 

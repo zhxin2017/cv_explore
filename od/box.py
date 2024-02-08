@@ -12,7 +12,6 @@ def pad_bbox(bboxes, indices, n_query):
 
 
 def offset_box(boxes_xywh, offset_h, offset_w):
-    print(boxes_xywh.shape)
     boxes_xywh[:, :1] = boxes_xywh[:, :1] + offset_w
     boxes_xywh[:, 1:2] = boxes_xywh[:, 1:2] + offset_h
     return boxes_xywh

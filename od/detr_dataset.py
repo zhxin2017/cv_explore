@@ -4,7 +4,7 @@ import torch
 import random
 from torch.utils.data import Dataset
 import torchvision
-from od.config_file import train_img_dir, val_img_dir
+from od.config import train_img_dir, val_img_dir
 
 
 class OdDataset(Dataset):
@@ -69,7 +69,7 @@ class OdDataset(Dataset):
 
 
 if __name__ == '__main__':
-    from config_file import val_annotation_file, val_img_od_dict_file
+    from config import val_annotation_file, val_img_od_dict_file
 
     dicts = anno.build_img_dict(val_annotation_file, val_img_od_dict_file, task='od')
     ds = OdDataset(dicts, train=False, sample_num=10)
