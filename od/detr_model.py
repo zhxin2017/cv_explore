@@ -2,8 +2,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from model import base
-import pe
-from config_category import category_num
+import util
+from od import pe, config_category
 
 
 def attention(q, k, v):
@@ -111,7 +111,7 @@ class DETR(nn.Module):
         self.hw_delta_mlp = base.MLP(d_cont, 256, 2, 2)
         self.src_hw_mlp = base.MLP(d_cont, 256, self.d_pos_emb, 2)
         self.anchor_emb = pe.Embedding1D(n_query, 4, device)
-        self.classify_mlp = base.MLP(d_cont, 256, category_num, 2)
+        self.classify_mlp = base.MLP(d_cont, 256, config_category.category_num, 2)
 
         decoder_layers = []
         for i in range(n_dec_layer):
@@ -151,15 +151,15 @@ class DETR(nn.Module):
         q_tgt_cont = torch.zeros(B, self.n_query, self.d_cont, device=self.device)
 
         k_src_pos = pos_emb
+        k_src_hw = self.src_hw_mlp(x)
 
         for i, dec_layer in enumerate(self.decoder):
-            k_src_hw = self.src_hw_mlp(x)
             v_src_cont = x
             q_tgt_cont = dec_layer(q_tgt_cont, q_tgt_pos, q_tgt_hw, k_src_pos, k_src_hw, v_src_cont)
             tgt_pos_delta = self.pos_delta_mlp(q_tgt_cont)
             tgt_hw_delta = self.hw_delta_mlp(q_tgt_cont)
-            xy = xy + tgt_pos_delta
-            wh = wh + tgt_hw_delta
+            xy = F.sigmoid(util.inverse_sigmoid(xy) + tgt_pos_delta)
+            wh = F.sigmoid(util.inverse_sigmoid(wh) + tgt_hw_delta)
 
             if i < self.n_dec_layer - 1:
                 q_tgt_pos = self.pe_proj(xy)

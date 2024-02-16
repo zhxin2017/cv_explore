@@ -4,11 +4,38 @@ import torch
 import random
 from torch.utils.data import Dataset
 import torchvision
-from od.config import train_img_dir, val_img_dir
+from od.config import train_img_dir, val_img_dir, img_sz
+
+
+def get_gt_by_img_id(img_id, img_dict, img_dir, resize, random_shift, n_query):
+    img = od_image.read_img_by_id(img_id, img_dir, channel_first=False)
+    objs = img_dict[img_id]['objs']
+    out_ratio = resize[0] / resize[1]
+    img, offset_h, offset_w = image.pad_img(img, random_offset=random_shift, content='zero',
+                                            out_ratio=out_ratio)
+
+    boxes, cids = [], []
+    for o in objs:
+        boxes.append(o['bbox'])
+        cids.append(o['category_id'])
+
+    boxes = torch.tensor(boxes)
+
+    resize_factor = resize[0] / img.shape[0]
+    boxes = box.offset_box(boxes, offset_h, offset_w)
+    boxes = box.xywh_to_xyxy(boxes) * resize_factor
+
+    bboxes_padded, indices_padded = box.pad_bbox(boxes, cids, n_query)
+
+    img = torch.permute(img, [2, 0, 1])
+
+    img = torchvision.transforms.Resize(resize)(img)
+
+    return img, bboxes_padded, indices_padded, img_id
 
 
 class OdDataset(Dataset):
-    def __init__(self, img_dict, train=True, sample_num=None, resize=(384, 512), n_query=300, random_shift=True):
+    def __init__(self, img_dict, train=True, sample_num=None, resize=img_sz, n_query=300, random_shift=True):
         self.sample_num = sample_num
         self.resize = resize
         self.random_shift = random_shift
@@ -40,29 +67,7 @@ class OdDataset(Dataset):
 
     def __getitem__(self, item):
         img_id = self.img_ids[item]
-        img = od_image.read_img_by_id(img_id, self.img_dir, channel_first=False)
-        objs = self.img_dict[img_id]['objs']
-        out_ratio = self.resize[0] / self.resize[1]
-        img, offset_h, offset_w = image.pad_img(img, random_offset=self.random_shift, out_ratio=out_ratio)
-
-        boxes, cids = [], []
-        for o in objs:
-            boxes.append(o['bbox'])
-            cids.append(o['category_id'])
-
-        boxes = torch.tensor(boxes)
-
-        resize_factor = self.resize[0] / img.shape[0]
-        boxes = box.offset_box(boxes, offset_h, offset_w)
-        boxes = box.xywh_to_xyxy(boxes) * resize_factor
-
-        bboxes_padded, indices_padded = box.pad_bbox(boxes, cids, self.n_query)
-
-        img = torch.permute(img, [2, 0, 1])
-
-        img = torchvision.transforms.Resize(self.resize)(img)
-
-        return img, bboxes_padded, indices_padded, img_id
+        return get_gt_by_img_id(img_id, self.img_dict, self.img_dir, self.resize, self.random_shift, self.n_query)
 
     def __len__(self):
         return self.sample_num

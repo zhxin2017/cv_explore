@@ -44,6 +44,8 @@ def pad_img(img, random_offset=True, buffer_ratio=0, content='random', out_ratio
     return padded_img, offset_h, offset_w
 
 
+# def crop_image(img, random_offset=True, out_ratio=1.0, channel_first=False):
+
 def patchify(img, patch_size, channel_first=True, combine_patch=False):
     if channel_first:
         b, c, h, w = img.shape

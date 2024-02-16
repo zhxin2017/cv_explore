@@ -1,7 +1,7 @@
 import torch
 from torch import nn, optim
 from od import anno, detr_dataset, detr_model, match, box
-from od.config import val_annotation_file, val_img_od_dict_file, n_query, img_sz, loss_weights
+from od.config import train_annotation_file, train_img_od_dict_file, n_query, img_sz, loss_weights
 from config_category import category_num
 import focalloss
 import numpy as np
@@ -9,8 +9,8 @@ from torchvision.ops import distance_box_iou_loss
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-# device = torch.device("mps")
-device = torch.device("cpu")
+device = torch.device("mps")
+# device = torch.device("cpu")
 
 
 def eval_pred(cls_logits_pred, cids_gt, query_pos_mask):
@@ -28,7 +28,7 @@ def eval_pred(cls_logits_pred, cids_gt, query_pos_mask):
     return accu, recall, n_pos, tp
 
 
-cls_loss_fun = nn.CrossEntropyLoss(reduction='mean')
+cls_loss_fun = nn.CrossEntropyLoss(reduction='none')
 
 model = detr_model.DETR(d_cont=256, device=device)
 model.to(device)
@@ -36,28 +36,24 @@ model.to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
 alpha = torch.tensor(loss_weights, device=device)**0.8
 
-dicts = anno.build_img_dict(val_annotation_file, val_img_od_dict_file, task='od')
+dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
 
 
-def train(epoch, batch_size, population, num_sampe):
-    ds = detr_dataset.OdDataset(dicts, train=False, sample_num=population)
+def train(epoch, batch_size, population, num_sample):
+    ds = detr_dataset.OdDataset(dicts, train=True, sample_num=population, random_shift=True)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
     for i in range(epoch):
         for j, (img, boxes_gt_xyxy, cids_gt, img_id) in enumerate(dl):
-            print(img_id)
             img = img.to(device)
             cids_gt = cids_gt.to(torch.long)
             cids_gt = cids_gt.to(device)
 
-            boxes_gt_xyxy = boxes_gt_xyxy.to(device) / img_sz
-
+            boxes_gt_xyxy = boxes_gt_xyxy.to(device) / max(img_sz)
             img = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img)
 
             B = img.shape[0]
 
             boxes_pred_cxcywh, cls_logits_pred = model(img)
-
-            diff_sum = (boxes_pred_cxcywh[1] - boxes_pred_cxcywh[0]).abs().sum() if B > 1 else 0
 
             boxes_pred_xyxy = box.cxcywh_to_xyxy(boxes_pred_cxcywh)
 
@@ -77,22 +73,20 @@ def train(epoch, batch_size, population, num_sampe):
 
             cls_logits_pred = cls_logits_pred.view(B * n_query, -1)
 
-            # cls_loss = cls_loss_fun(cls_logits_pred, cids_gt)
             cids_gt_onehot = torch.zeros(B * n_query, category_num, device=device).scatter_(1, cids_gt.unsqueeze(1), 1)
             cids_num = cids_gt_onehot.sum(dim=0)
-            alpha = focalloss.cal_weights(cids_num, recover=1)
-
-            cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt, alpha).mean() * 10
+            alpha = focalloss.cal_weights(cids_num, recover=1.2)
+            cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt, alpha).mean() * 100
+            # cls_loss = cls_loss_fun(cls_logits_pred, cids_gt)
 
             boxes_gt_xyxy = boxes_gt_xyxy[(gt_matched_indices_batch, gt_matched_indices_query)]
-
             box_loss = distance_box_iou_loss(boxes_pred_xyxy.view(B * n_query, -1), boxes_gt_xyxy.view(B * n_query, -1))
+            box_loss_ = box_loss.mean()
 
             query_pos_mask = (cols < cls_pos_num).view(B * n_query) * 1
             box_loss = box_loss * query_pos_mask
 
             accu, recall, n_pos, n_tp = eval_pred(cls_logits_pred, cids_gt, query_pos_mask)
-
             box_loss = box_loss.sum() / (n_pos + 1e-5)
 
             loss = cls_loss + box_loss
@@ -102,22 +96,15 @@ def train(epoch, batch_size, population, num_sampe):
             # nn.utils.clip_grad_value_(model.parameters(), 0.05)
             optimizer.step()
 
-            print(f'smp {num_sampe}, epoch {i + 1}/{epoch}, batch {j}|'
+            print(f'smp {num_sample}, epoch {i + 1}/{epoch}, batch {j}|'
                   f'cl {cls_loss.detach().item():.3f}|b'
                   f'l {box_loss.detach().item():.3f}|'
-                  f'ac {accu:.3f}/rc {recall:.3f}: {n_tp}/{n_pos}|dif {diff_sum:.3f}')
+                  f'l_ {box_loss_.detach().item():.3f}|'
+                  f'ac {accu:.3f}|rc {recall:.3f}: {n_tp}/{n_pos}')
 
-
-#
-# while True:
-#     cnt += 1
-#     img_sz = 512
-#
-
-# if cnt % 4 == 0:
 
 if __name__ == '__main__':
-    for i in range(20):
-        # train(200, batch_size=2, population=2000, num_sampe=i)
-        train(200, batch_size=2, population=2, num_sampe=i)
-        # torch.save(model.state_dict(), f'../resources/od_detr.pt')
+    for i in range(500):
+        train(1, batch_size=2, population=1000, num_sample=i)
+        # train(1800, batch_size=2, population=2, num_sample=i)
+        torch.save(model.state_dict(), f'/Users/zx/Documents/ml/restart/resources/od_detr.pt')
