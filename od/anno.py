@@ -31,7 +31,7 @@ def build_img_dict(annotation_file, img_dict_file, task='od'):
 
 
 if __name__ == '__main__':
-    from od.config import val_img_od_dict_file, train_img_od_dict_file, train_annotation_file, val_annotation_file
+    from common.config import val_img_od_dict_file, train_img_od_dict_file, train_annotation_file, val_annotation_file
 
     build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
     build_img_dict(val_annotation_file, val_img_od_dict_file, task='od')

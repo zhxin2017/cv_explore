@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import scipy
 import torchvision.ops
-from od.config_category import category_num
+from od.config import category_num
 
 
 def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask):
@@ -14,10 +14,6 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask):
     cls_pred = cls_pred.view(B, N, 1, category_num).expand(B, N, N, category_num).contiguous().view(-1, category_num)
     cids_gt = cids_gt.view(B, 1, N).expand(B, N, N).contiguous().view(-1)
     cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred, cids_gt).view(B, N, N) * gt_pos_mask
-
-    num_gt = gt_pos_mask.sum()
-    iouloss_ = iouloss.sum() / num_gt
-    cls_loss_ = cls_loss.sum() / num_gt
 
     total_loss = iouloss * 4 + cls_loss + 1e8 * (1 - gt_pos_mask)
     total_loss[total_loss == torch.nan] = 1e8

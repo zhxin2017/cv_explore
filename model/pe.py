@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from od.config import img_sz
+from common.config import img_sz
 
 
 class Embedding2D(nn.Module):

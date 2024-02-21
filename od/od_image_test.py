@@ -1,8 +1,7 @@
 import torch
 
 from od import od_image
-import image
-import config
+from common import image, config
 import torchvision
 
 import matplotlib
@@ -10,7 +9,7 @@ from matplotlib import pyplot as plt
 
 matplotlib.use('TkAgg')
 img_id = 632
-img_dir = config_file.val_img_dir
+img_dir = config.val_img_dir
 
 # test padding image
 '''

@@ -1,18 +1,17 @@
 from od import od_image, anno, box
-import image
+from common import image
 import torch
 import random
 from torch.utils.data import Dataset
 import torchvision
-from od.config import train_img_dir, val_img_dir, img_sz
+from common.config import train_img_dir, val_img_dir, img_sz
 
 
 def get_gt_by_img_id(img_id, img_dict, img_dir, resize, random_shift, n_query):
     img = od_image.read_img_by_id(img_id, img_dir, channel_first=False)
     objs = img_dict[img_id]['objs']
     out_ratio = resize[0] / resize[1]
-    img, offset_h, offset_w = image.pad_img(img, random_offset=random_shift, content='zero',
-                                            out_ratio=out_ratio)
+    img, offset_h, offset_w = image.pad_img(img, random_offset=random_shift, content='zero', out_ratio=out_ratio)
 
     boxes, cids = [], []
     for o in objs:
@@ -35,7 +34,7 @@ def get_gt_by_img_id(img_id, img_dict, img_dir, resize, random_shift, n_query):
 
 
 class OdDataset(Dataset):
-    def __init__(self, img_dict, train=True, sample_num=None, resize=img_sz, n_query=300, random_shift=True):
+    def __init__(self, img_dict, train=True, sample_num=None, resize=img_sz, n_query=300, random_shift=False):
         self.sample_num = sample_num
         self.resize = resize
         self.random_shift = random_shift
@@ -74,7 +73,7 @@ class OdDataset(Dataset):
 
 
 if __name__ == '__main__':
-    from config import val_annotation_file, val_img_od_dict_file
+    from common.config import val_annotation_file, val_img_od_dict_file
 
     dicts = anno.build_img_dict(val_annotation_file, val_img_od_dict_file, task='od')
     ds = OdDataset(dicts, train=False, sample_num=10)

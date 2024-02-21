@@ -1,7 +1,8 @@
 from od import anno
 import torch
-from config import train_annotation_file, train_img_od_dict_file, n_query
-from config_category import cid_to_occurrence, category_num
+from common.config import train_annotation_file, train_img_od_dict_file
+from od.config import cid_to_occurrence, category_num, n_query
+
 
 dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
 

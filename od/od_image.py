@@ -1,4 +1,4 @@
-import image
+from common import image
 
 
 def img_id_to_name(img_id):

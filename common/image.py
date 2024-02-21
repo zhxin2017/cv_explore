@@ -46,7 +46,9 @@ def pad_img(img, random_offset=True, buffer_ratio=0, content='random', out_ratio
 
 # def crop_image(img, random_offset=True, out_ratio=1.0, channel_first=False):
 
-def patchify(img, patch_size, channel_first=True, combine_patch=False):
+def patchify(img, patch_size, channel_first=True):
+    if len(img.shape) == 3:
+        img = torch.unsqueeze(img, dim=0)
     if channel_first:
         b, c, h, w = img.shape
     else:
@@ -62,8 +64,6 @@ def patchify(img, patch_size, channel_first=True, combine_patch=False):
         patch_dim = [0, 1, 3, 2, 4, 5]
     img = img.view(*patch_shape)
     img = torch.permute(img, patch_dim)
-    if combine_patch:
-        img = img.contiguous().view(b, py, px, patch_size * patch_size * c)
     return img
 
 

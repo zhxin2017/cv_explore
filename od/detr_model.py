@@ -1,9 +1,9 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from model import base
+from model import base, pe
 import util
-from od import pe, config_category
+from od import config
 
 
 def attention(q, k, v):
@@ -111,7 +111,7 @@ class DETR(nn.Module):
         self.hw_delta_mlp = base.MLP(d_cont, 256, 2, 2)
         self.src_hw_mlp = base.MLP(d_cont, 256, self.d_pos_emb, 2)
         self.anchor_emb = pe.Embedding1D(n_query, 4, device)
-        self.classify_mlp = base.MLP(d_cont, 256, config_category.category_num, 2)
+        self.classify_mlp = base.MLP(d_cont, 256, config.category_num, 2)
 
         decoder_layers = []
         for i in range(n_dec_layer):
