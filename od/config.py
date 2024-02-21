@@ -1,22 +1,90 @@
-# ----------FILES--------------------
-coco_dir = '/Users/zx/Documents/ml/dataset/coco'
-class_file = '/Users/zx/Documents/ml/dataset/coco/ms_coco_classnames.txt'
 
-train_img_dir = f'{coco_dir}/train2017'
-val_img_dir = f'{coco_dir}/val2017'
+categories = [{"supercategory": "person", "id": 1, "name": "person"},
+              {"supercategory": "vehicle", "id": 2, "name": "bicycle"},
+              {"supercategory": "vehicle", "id": 3, "name": "car"},
+              {"supercategory": "vehicle", "id": 4, "name": "motorcycle"},
+              {"supercategory": "vehicle", "id": 5, "name": "airplane"},
+              {"supercategory": "vehicle", "id": 6, "name": "bus"},
+              {"supercategory": "vehicle", "id": 7, "name": "train"},
+              {"supercategory": "vehicle", "id": 8, "name": "truck"},
+              {"supercategory": "vehicle", "id": 9, "name": "boat"},
+              {"supercategory": "outdoor", "id": 10, "name": "traffic light"},
+              {"supercategory": "outdoor", "id": 11, "name": "fire hydrant"},
+              {"supercategory": "outdoor", "id": 13, "name": "stop sign"},
+              {"supercategory": "outdoor", "id": 14, "name": "parking meter"},
+              {"supercategory": "outdoor", "id": 15, "name": "bench"},
+              {"supercategory": "animal", "id": 16, "name": "bird"},
+              {"supercategory": "animal", "id": 17, "name": "cat"},
+              {"supercategory": "animal", "id": 18, "name": "dog"},
+              {"supercategory": "animal", "id": 19, "name": "horse"},
+              {"supercategory": "animal", "id": 20, "name": "sheep"},
+              {"supercategory": "animal", "id": 21, "name": "cow"},
+              {"supercategory": "animal", "id": 22, "name": "elephant"},
+              {"supercategory": "animal", "id": 23, "name": "bear"},
+              {"supercategory": "animal", "id": 24, "name": "zebra"},
+              {"supercategory": "animal", "id": 25, "name": "giraffe"},
+              {"supercategory": "accessory", "id": 27, "name": "backpack"},
+              {"supercategory": "accessory", "id": 28, "name": "umbrella"},
+              {"supercategory": "accessory", "id": 31, "name": "handbag"},
+              {"supercategory": "accessory", "id": 32, "name": "tie"},
+              {"supercategory": "accessory", "id": 33, "name": "suitcase"},
+              {"supercategory": "sports", "id": 34, "name": "frisbee"},
+              {"supercategory": "sports", "id": 35, "name": "skis"},
+              {"supercategory": "sports", "id": 36, "name": "snowboard"},
+              {"supercategory": "sports", "id": 37, "name": "sports ball"},
+              {"supercategory": "sports", "id": 38, "name": "kite"},
+              {"supercategory": "sports", "id": 39, "name": "baseball bat"},
+              {"supercategory": "sports", "id": 40, "name": "baseball glove"},
+              {"supercategory": "sports", "id": 41, "name": "skateboard"},
+              {"supercategory": "sports", "id": 42, "name": "surfboard"},
+              {"supercategory": "sports", "id": 43, "name": "tennis racket"},
+              {"supercategory": "kitchen", "id": 44, "name": "bottle"},
+              {"supercategory": "kitchen", "id": 46, "name": "wine glass"},
+              {"supercategory": "kitchen", "id": 47, "name": "cup"},
+              {"supercategory": "kitchen", "id": 48, "name": "fork"},
+              {"supercategory": "kitchen", "id": 49, "name": "knife"},
+              {"supercategory": "kitchen", "id": 50, "name": "spoon"},
+              {"supercategory": "kitchen", "id": 51, "name": "bowl"},
+              {"supercategory": "food", "id": 52, "name": "banana"},
+              {"supercategory": "food", "id": 53, "name": "apple"},
+              {"supercategory": "food", "id": 54, "name": "sandwich"},
+              {"supercategory": "food", "id": 55, "name": "orange"},
+              {"supercategory": "food", "id": 56, "name": "broccoli"},
+              {"supercategory": "food", "id": 57, "name": "carrot"},
+              {"supercategory": "food", "id": 58, "name": "hot dog"},
+              {"supercategory": "food", "id": 59, "name": "pizza"},
+              {"supercategory": "food", "id": 60, "name": "donut"}, {"supercategory": "food", "id": 61, "name": "cake"},
+              {"supercategory": "furniture", "id": 62, "name": "chair"},
+              {"supercategory": "furniture", "id": 63, "name": "couch"},
+              {"supercategory": "furniture", "id": 64, "name": "potted plant"},
+              {"supercategory": "furniture", "id": 65, "name": "bed"},
+              {"supercategory": "furniture", "id": 67, "name": "dining table"},
+              {"supercategory": "furniture", "id": 70, "name": "toilet"},
+              {"supercategory": "electronic", "id": 72, "name": "tv"},
+              {"supercategory": "electronic", "id": 73, "name": "laptop"},
+              {"supercategory": "electronic", "id": 74, "name": "mouse"},
+              {"supercategory": "electronic", "id": 75, "name": "remote"},
+              {"supercategory": "electronic", "id": 76, "name": "keyboard"},
+              {"supercategory": "electronic", "id": 77, "name": "cell phone"},
+              {"supercategory": "appliance", "id": 78, "name": "microwave"},
+              {"supercategory": "appliance", "id": 79, "name": "oven"},
+              {"supercategory": "appliance", "id": 80, "name": "toaster"},
+              {"supercategory": "appliance", "id": 81, "name": "sink"},
+              {"supercategory": "appliance", "id": 82, "name": "refrigerator"},
+              {"supercategory": "indoor", "id": 84, "name": "book"},
+              {"supercategory": "indoor", "id": 85, "name": "clock"},
+              {"supercategory": "indoor", "id": 86, "name": "vase"},
+              {"supercategory": "indoor", "id": 87, "name": "scissors"},
+              {"supercategory": "indoor", "id": 88, "name": "teddy bear"},
+              {"supercategory": "indoor", "id": 89, "name": "hair drier"},
+              {"supercategory": "indoor", "id": 90, "name": "toothbrush"}]
 
-train_anno_dir = f'{coco_dir}/annotations/train_annotations'
-val_anno_dir = f'{coco_dir}/annotations/val_annotations'
 
-train_annotation_file = f'{coco_dir}/annotations/instances_train2017.json'
-val_annotation_file = f'{coco_dir}/annotations/instances_val2017.json'
+cid_to_name = {c['id']: c['name'] for c in categories}
+cid_to_name[0] = 'background'
 
-val_img_od_dict_file = f'{coco_dir}/annotations/val_img_od_dict.json'
-train_img_od_dict_file = f'{coco_dir}/annotations/train_img_od_dict.json'
+name_to_cid = {n: cid for cid, n in cid_to_name.items()}
 
-# ---------------TRAIN----------------------
-sub_epoch = 10000
-loss_weights = [5.718230055311747e-06, 0.0007543862991255977, 0.027836355967946015, 0.004513643513347163, 0.022693409742120346, 0.0385589094449854, 0.03262481463173505, 0.04331656092758696, 0.0198536047327785, 0.0184031973231713, 0.015367898168270725, 0.1061662198391421, 1, 0.09984871406959153, 0.15408560311284047, 0.020126041878430576, 0.018323153803442533, 0.041526845637583895, 0.03594771241830066, 0.0300592075299833, 0.020822378799032495, 0.024303424573462625, 0.03591510974061309, 0.15301391035548687, 0.037337356213464075, 0.038588969011888526, 1, 0.022706422018348625, 0.017321319219665822, 1, 1, 0.016027197668771247, 0.030480295566502467, 0.03197674418604651, 0.0738255033557047, 0.029792356304544087, 0.07374301675977654, 0.031195840554592725, 0.021815777875716175, 0.06043956043956044, 0.05284227381905524, 0.03572072884719466, 0.03232125367286974, 0.04114713216957606, 0.00813408922849396, 1, 0.025022115506129157, 0.009588377723970944, 0.03613798138346414, 0.025482625482625483, 0.032116788321167884, 0.01379022147931467, 0.020934658490167055, 0.03384036916766365, 0.04527784129887949, 0.030942334739803096, 0.027093596059113302, 0.025216505348955684, 0.067854694996573, 0.034014774093798314, 0.02758044295862934, 0.031166378089091767, 0.005144059650307864, 0.0342619830420488, 0.02288488210818308, 0.04723282442748091, 1, 0.012600229095074456, 1, 1, 0.047630502766418094, 1, 0.034108527131782945, 0.03983903420523139, 0.08753315649867374, 0.03471856917411889, 0.06935201401050789, 0.030774013055641907, 0.11835026897788405, 0.0593881223755249, 0.88, 0.03529411764705883, 0.07508532423208192, 1, 0.008011329152336637, 0.031259867382380804, 0.029941025253288976, 0.1336934503713707, 0.0413102441059879, 1.0, 0.10133060388945753]
-# ---------------MODEL----------------------
-img_sz = (448, 448)
-n_query = 300
+cid_to_occurrence = {1: 262465, 2: 7113, 3: 43867, 4: 8725, 5: 5135, 6: 6069, 7: 4571, 8: 9973, 9: 10759, 10: 12884, 11: 1865, 13: 1983, 14: 1285, 15: 9838, 16: 10806, 17: 4768, 18: 5508, 19: 6587, 20: 9509, 21: 8147, 22: 5513, 23: 1294, 24: 5303, 25: 5131, 27: 8720, 28: 11431, 31: 12354, 32: 6496, 33: 6192, 34: 2682, 35: 6646, 36: 2685, 37: 6347, 38: 9076, 39: 3276, 40: 3747, 41: 5543, 42: 6126, 43: 4812, 44: 24342, 46: 7913, 47: 20650, 48: 5479, 49: 7770, 50: 6165, 51: 14358, 52: 9458, 53: 5851, 54: 4373, 55: 6399, 56: 7308, 57: 7852, 58: 2918, 59: 5821, 60: 7179, 61: 6353, 62: 38491, 63: 5779, 64: 8652, 65: 4192, 67: 15714, 70: 4157, 72: 5805, 73: 4970, 74: 2262, 75: 5703, 76: 2855, 77: 6434, 78: 1673, 79: 3334, 80: 225, 81: 5610, 82: 2637, 84: 24715, 85: 6334, 86: 6613, 87: 1481, 88: 4793, 89: 198, 90: 1954}
+
+category_num = 91
