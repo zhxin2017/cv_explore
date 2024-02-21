@@ -2,3 +2,4 @@
 mnist
 *.DS_Store
 od/__pycache__/*
+__pycache__/*

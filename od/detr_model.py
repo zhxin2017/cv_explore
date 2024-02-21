@@ -1,72 +1,17 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from model import base, pe
+from model import base, pe, tsfm
 import util
 from od import config
 
 
-def attention(q, k, v):
-    d = q.shape[-1]
-    k = torch.transpose(k, -2, -1)
-    attn = F.softmax(q @ k / d ** 0.5, dim=-1) @ v
-    return attn
-
-
-class CrossAttention(nn.Module):
-    def __init__(self, n_head, q_dim, v_dim):
-        super().__init__()
-        self.n_head = n_head
-        self.q_dim = q_dim
-        self.v_dim = v_dim
-        self.q_head_dim = q_dim // n_head
-        self.v_head_dim = v_dim // n_head
-        self.q_proj = nn.Linear(q_dim, q_dim)
-        self.k_proj = nn.Linear(q_dim, q_dim)
-        self.v_proj = nn.Linear(v_dim, v_dim)
-        self.out_proj = nn.Linear(v_dim, v_dim)
-        self.ln = nn.LayerNorm(v_dim)
-
-    def forward(self, q, k, v):
-        q_ = self.q_proj(q)
-        k = self.k_proj(k)
-        v = self.v_proj(v)
-
-        b, lq, lv = q_.shape[0], q_.shape[1], v.shape[1]
-
-        q_ = q_.view(b, lq, self.n_head, self.q_head_dim).permute([0, 2, 1, 3])
-        k = k.view(b, lv, self.n_head, self.q_head_dim).permute([0, 2, 1, 3])
-        v = v.view(b, lv, self.n_head, self.v_head_dim).permute([0, 2, 1, 3])
-
-        out = attention(q_, k, v)
-        out = out.permute([0, 2, 1, 3]).contiguous().view(b, lq, self.n_head * self.v_head_dim)
-
-        if self.v_dim < self.q_dim:
-            q = q[..., :self.v_dim]
-        out = self.ln(q + self.out_proj(out))
-        return out
-
-
-class EncoderLayer(nn.Module):
-    def __init__(self, dim, n_head):
-        super().__init__()
-        self.sa = CrossAttention(n_head, dim, dim)
-        self.ffn = base.FFN(dim)
-        self.ln = nn.LayerNorm(dim)
-
-    def forward(self, x):
-        out = self.sa(x, x, x)
-        out = self.ffn(out)
-        out = self.ln(x + out)
-        return out
-
-
-class DecoderLayer(nn.Module):
+class DetrDecoderLayer(nn.Module):
     def __init__(self, n_head, q_dim, v_dim, omit_sa=False):
         super().__init__()
         self.omit_sa = omit_sa
-        self.sa = CrossAttention(n_head, q_dim, v_dim)
-        self.ca = CrossAttention(n_head, q_dim, v_dim)
+        self.sa = tsfm.CrossAttention(n_head, q_dim, v_dim)
+        self.ca = tsfm.CrossAttention(n_head, q_dim, v_dim)
         self.ffn = base.FFN(v_dim)
         self.ln = nn.LayerNorm(v_dim)
 
@@ -103,7 +48,7 @@ class DETR(nn.Module):
 
         encoder_layers = []
         for i in range(n_enc_layer):
-            encoder_layers.append(EncoderLayer(d_cont + self.d_pos_emb, n_head))
+            encoder_layers.append(tsfm.EncoderLayer(d_cont + self.d_pos_emb, n_head))
         self.enc_dec_proj = nn.Linear(d_cont + self.d_pos_emb, d_cont)
         self.encoder = nn.ModuleList(encoder_layers)
 
@@ -116,9 +61,9 @@ class DETR(nn.Module):
         decoder_layers = []
         for i in range(n_dec_layer):
             if i == 0:
-                decoder_layers.append(DecoderLayer(n_head, self.d_cont * 2, d_cont, omit_sa=True))
+                decoder_layers.append(DetrDecoderLayer(n_head, self.d_cont * 2, d_cont, omit_sa=True))
             else:
-                decoder_layers.append(DecoderLayer(n_head, self.d_cont * 2, d_cont))
+                decoder_layers.append(DetrDecoderLayer(n_head, self.d_cont * 2, d_cont))
         self.decoder = nn.ModuleList(decoder_layers)
 
     def forward(self, x):
@@ -171,8 +116,7 @@ class DETR(nn.Module):
 
 
 if __name__ == '__main__':
-
-    device= torch.device('mps')
+    device = torch.device('mps')
 
     imgs = torch.rand([2, 3, 512, 512], device=device)
     detr = DETR(256, device=device)
