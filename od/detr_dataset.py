@@ -4,7 +4,7 @@ import torch
 import random
 from torch.utils.data import Dataset
 import torchvision
-from common.config import train_img_dir, val_img_dir, img_sz
+from common.config import train_img_dir, val_img_dir, img_size
 
 
 def get_gt_by_img_id(img_id, img_dict, img_dir, resize, random_shift, n_query):
@@ -34,7 +34,7 @@ def get_gt_by_img_id(img_id, img_dict, img_dir, resize, random_shift, n_query):
 
 
 class OdDataset(Dataset):
-    def __init__(self, img_dict, train=True, sample_num=None, resize=img_sz, n_query=300, random_shift=False):
+    def __init__(self, img_dict, train=True, sample_num=None, resize=img_size, n_query=300, random_shift=False):
         self.sample_num = sample_num
         self.resize = resize
         self.random_shift = random_shift

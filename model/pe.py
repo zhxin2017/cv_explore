@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from common.config import img_sz
+from common.config import img_size
 
 
 class Embedding2D(nn.Module):
@@ -53,7 +53,7 @@ class Embedding1D(nn.Module):
         return emb.unsqueeze(0).repeat(B, 1, 1)
 
 
-def gen_pos_2d(x, device=torch.device('mps'), feature_map_size=max(img_sz) // 8):
+def gen_pos_2d(x, device=torch.device('mps'), feature_map_size=max(img_size) // 8):
     B, H, W, C = x.shape
     row_indices = torch.arange(H, device=device).unsqueeze(1).repeat(1, W).unsqueeze(-1)
     col_indices = torch.arange(W, device=device).unsqueeze(0).repeat(H, 1).unsqueeze(-1)

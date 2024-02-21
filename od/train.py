@@ -1,7 +1,7 @@
 import torch
 from torch import nn, optim
 from od import anno, detr_dataset, detr_model, match, box
-from common.config import train_annotation_file, train_img_od_dict_file, img_sz
+from common.config import train_annotation_file, train_img_od_dict_file, img_size
 from od.config import category_num, n_query
 import focalloss
 import numpy as np
@@ -39,7 +39,7 @@ optimizer = optim.Adam(model.parameters(), lr=1e-5)
 dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
 
 
-def train(epoch, batch_size, population, num_sample):
+def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
     ds = detr_dataset.OdDataset(dicts, train=True, sample_num=population, random_shift=True)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
     for i in range(epoch):
@@ -47,7 +47,7 @@ def train(epoch, batch_size, population, num_sample):
             img = img.to(device)
             cids_gt = cids_gt.to(torch.long)
             cids_gt = cids_gt.to(device)
-            boxes_gt_xyxy = boxes_gt_xyxy.to(device) / max(img_sz)
+            boxes_gt_xyxy = boxes_gt_xyxy.to(device) / max(img_size)
             img = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img)
 
             B = img.shape[0]
@@ -74,7 +74,7 @@ def train(epoch, batch_size, population, num_sample):
 
             cids_gt_onehot = torch.zeros(B * n_query, category_num, device=device).scatter_(1, cids_gt.unsqueeze(1), 1)
             cids_num = cids_gt_onehot.sum(dim=0)
-            alpha = focalloss.cal_weights(cids_num, recover=0.6)
+            alpha = focalloss.cal_weights(cids_num, recover=weight_recover)
             cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt, alpha).mean() * 100
             # cls_loss = cls_loss_fun(cls_logits_pred, cids_gt)
 
@@ -87,7 +87,7 @@ def train(epoch, batch_size, population, num_sample):
             accu, recall, n_pos, n_tp = eval_pred(cls_logits_pred, cids_gt, query_pos_mask)
             box_loss = box_loss.sum() / (n_pos + 1e-5)
 
-            loss = cls_loss + box_loss * 100
+            loss = cls_loss + box_loss * 10
 
             optimizer.zero_grad()
             loss.backward()
@@ -103,9 +103,9 @@ def train(epoch, batch_size, population, num_sample):
 
 if __name__ == '__main__':
     model_file = f'/Users/zx/Documents/ml/restart/resources/od_detr.pt'
-    model.load_state_dict(torch.load(model_file))
+    # model.load_state_dict(torch.load(model_file))
     for i in range(500):
-        train(1, batch_size=2, population=1000, num_sample=i)
-        # train(800, batch_size=2, population=2, num_sample=i)
-        torch.save(model.state_dict(), model_file)
-        # break
+        # train(1, batch_size=2, population=1000, num_sample=i, weight_recover=.5)
+        train(1000, batch_size=2, population=2, num_sample=i, weight_recover=1)
+        # torch.save(model.state_dict(), model_file)
+        break

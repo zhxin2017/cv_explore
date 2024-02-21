@@ -12,7 +12,7 @@ def attention(q, k, v):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, n_head, q_dim, v_dim):
+    def __init__(self, n_head, q_dim, v_dim, out_dim=None):
         super().__init__()
         self.n_head = n_head
         self.q_dim = q_dim
@@ -22,8 +22,13 @@ class CrossAttention(nn.Module):
         self.q_proj = nn.Linear(q_dim, q_dim)
         self.k_proj = nn.Linear(q_dim, q_dim)
         self.v_proj = nn.Linear(v_dim, v_dim)
-        self.out_proj = nn.Linear(v_dim, v_dim)
-        self.ln = nn.LayerNorm(v_dim)
+        if out_dim is None:
+            self.out_dim = v_dim
+        else:
+            self.out_dim = out_dim
+        self.q_add_proj = nn.Linear(q_dim, self.out_dim)
+        self.out_proj = nn.Linear(v_dim, self.out_dim)
+        self.ln = nn.LayerNorm(self.out_dim)
 
     def forward(self, q, k, v):
         q_ = self.q_proj(q)
@@ -39,9 +44,7 @@ class CrossAttention(nn.Module):
         out = attention(q_, k, v)
         out = out.permute([0, 2, 1, 3]).contiguous().view(b, lq, self.n_head * self.v_head_dim)
 
-        if self.v_dim < self.q_dim:
-            q = q[..., :self.v_dim]
-        out = self.ln(q + self.out_proj(out))
+        out = self.ln(self.q_add_proj(q) + self.out_proj(out))
         return out
 
 
