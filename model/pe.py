@@ -57,7 +57,19 @@ def gen_pos_2d(x, device=torch.device('mps'), feature_map_size=max(img_size) // 
     B, H, W, C = x.shape
     row_indices = torch.arange(H, device=device).unsqueeze(1).repeat(1, W).unsqueeze(-1)
     col_indices = torch.arange(W, device=device).unsqueeze(0).repeat(H, 1).unsqueeze(-1)
-    positions = torch.concat(((col_indices + 0.5) / feature_map_size, (row_indices + 0.5) / feature_map_size), dim=-1)
+    positions = torch.concat(((row_indices + 0.5) / feature_map_size, (col_indices + 0.5) / feature_map_size,), dim=-1)
     positions = positions.unsqueeze(0).repeat(B, 1, 1, 1)
     return positions
 
+
+def sinusoidal_encoding(x, d, temperature=20, device=torch.device('mps')):
+    half_d = d // 2
+    half_range = list(range(half_d))
+    sin_indices = torch.tensor([2 * i for i in half_range], device=device)
+    cos_indices = torch.tensor([2 * i + 1 for i in half_range], device=device)
+    b, l, n = x.shape
+    x = x.view(b, l, n, 1).expand(b, l, n, d)
+    x_clone = torch.clone(x)
+    x_clone[..., sin_indices] = torch.sin(x[..., sin_indices] / temperature**(sin_indices / d))
+    x_clone[..., cos_indices] = torch.cos(x[..., cos_indices] / temperature**((cos_indices - 1) / d))
+    return x_clone.view(b, l, n * d)

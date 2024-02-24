@@ -1,6 +1,6 @@
 import torch
 from torch import nn, optim
-from od import anno, detr_dataset, detr_model, match, box
+from od import anno, detr_dataset, detr_model, match
 from common.config import train_annotation_file, train_img_od_dict_file, img_size
 from od.config import category_num, n_query
 import focalloss
@@ -52,8 +52,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
 
             B = img.shape[0]
 
-            boxes_pred_cxcywh, cls_logits_pred = model(img)
-            boxes_pred_xyxy = box.cxcywh_to_xyxy(boxes_pred_cxcywh)
+            boxes_pred_xyxy, cls_logits_pred = model(img)
 
             gt_pos_mask = (cids_gt > 0).view(B, 1, n_query) * 1
 
@@ -75,8 +74,12 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
             cids_gt_onehot = torch.zeros(B * n_query, category_num, device=device).scatter_(1, cids_gt.unsqueeze(1), 1)
             cids_num = cids_gt_onehot.sum(dim=0)
             alpha = focalloss.cal_weights(cids_num, recover=weight_recover)
-            cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt, alpha).mean() * 100
+            cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt, alpha).mean() * 10
             # cls_loss = cls_loss_fun(cls_logits_pred, cids_gt)
+
+            # cls_loss = -torch.log_softmax(cls_logits_pred, dim=-1) * cids_gt_onehot
+            # cls_loss = cls_loss * (alpha.view(1, category_num))**weight_recover
+            # cls_loss = cls_loss.sum(dim=-1).mean() * 10
 
             boxes_gt_xyxy = boxes_gt_xyxy[(gt_matched_indices_batch, gt_matched_indices_query)]
             box_loss = distance_box_iou_loss(boxes_pred_xyxy.view(B * n_query, -1), boxes_gt_xyxy.view(B * n_query, -1))
@@ -87,7 +90,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
             accu, recall, n_pos, n_tp = eval_pred(cls_logits_pred, cids_gt, query_pos_mask)
             box_loss = box_loss.sum() / (n_pos + 1e-5)
 
-            loss = cls_loss + box_loss * 10
+            loss = cls_loss + box_loss
 
             optimizer.zero_grad()
             loss.backward()
