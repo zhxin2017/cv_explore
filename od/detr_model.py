@@ -31,7 +31,7 @@ class DetrDecoderLayer(nn.Module):
 
 
 class DETR(nn.Module):
-    def __init__(self, d_cont, n_head=8, n_enc_layer=6, n_dec_layer=6, n_query=300, device=torch.device('mps')):
+    def __init__(self, d_cont, n_head=8, n_enc_layer=10, n_dec_layer=8, n_query=300, device=torch.device('mps')):
         super().__init__()
         self.d_cont = d_cont
         self.d_coord = d_cont // 2
@@ -50,11 +50,11 @@ class DETR(nn.Module):
         self.enc_dec_proj = nn.Linear(d_cont + self.d_coord, d_cont)
         self.encoder = nn.ModuleList(encoder_layers)
 
-        self.yx_delta_mlp = base.MLP(d_cont, 256, 2, 2)
-        self.hw_delta_mlp = base.MLP(d_cont, 256, 2, 2)
+        self.yx_delta_mlp = base.MLP(d_cont, d_cont * 2, 2, 2)
+        self.hw_delta_mlp = base.MLP(d_cont, d_cont * 2, 2, 2)
         self.anchor_yx_emb = pe.Embedding1D(n_query, 2, device)
         self.anchor_hw_emb = pe.Embedding1D(n_query, 2, device)
-        self.classify_mlp = base.MLP(d_cont, 256, config.category_num, 2)
+        self.classify_mlp = base.MLP(d_cont, d_cont * 2, config.category_num, 2)
 
         decoder_layers = []
         for i in range(n_dec_layer):
@@ -81,12 +81,12 @@ class DETR(nn.Module):
 
         x = F.layer_norm(F.relu(self.enc_dec_proj(x)), [self.d_cont])
 
-        y1x1 = self.anchor_yx_emb(B)
-        hw = self.anchor_hw_emb(B)
-        y2x2 = y1x1 + hw
+        anchor_y1x1 = self.anchor_yx_emb(B)
+        anchor_hw = self.anchor_hw_emb(B)
+        anchor_y2x2 = anchor_y1x1 + anchor_hw
 
-        q_tgt_y1x1 = pe.sinusoidal_encoding(y1x1, self.d_coord // 2, device=self.device)
-        q_tgt_y2x2 = pe.sinusoidal_encoding(y2x2, self.d_coord // 2, device=self.device)
+        q_tgt_y1x1 = pe.sinusoidal_encoding(anchor_y1x1, self.d_coord // 2, device=self.device)
+        q_tgt_y2x2 = pe.sinusoidal_encoding(anchor_y2x2, self.d_coord // 2, device=self.device)
         q_tgt_cont = torch.zeros(B, self.n_query, self.d_cont, device=self.device)
 
         k_src_yx = enc_yx_emb
@@ -96,19 +96,19 @@ class DETR(nn.Module):
             q_tgt_cont = dec_layer(q_tgt_cont, q_tgt_y1x1, q_tgt_y2x2, k_src_yx, v_src_cont)
             tgt_y1x1_delta = self.yx_delta_mlp(q_tgt_cont)
             tgt_hw_delta = self.hw_delta_mlp(q_tgt_cont)
-            y1x1 = F.sigmoid(util.inverse_sigmoid(y1x1) + tgt_y1x1_delta)
-            hw = F.sigmoid(util.inverse_sigmoid(hw) + tgt_hw_delta)
-            y2x2 = y1x1 + hw
+            anchor_y1x1 = F.sigmoid(util.inverse_sigmoid(anchor_y1x1) + tgt_y1x1_delta)
+            anchor_hw = F.sigmoid(util.inverse_sigmoid(anchor_hw) + tgt_hw_delta)
+            anchor_y2x2 = anchor_y1x1 + anchor_hw
 
             if i < self.n_dec_layer - 1:
-                q_tgt_y1x1 = pe.sinusoidal_encoding(y1x1, self.d_coord // 2, device=self.device)
-                q_tgt_y2x2 = pe.sinusoidal_encoding(y2x2, self.d_coord // 2, device=self.device)
+                q_tgt_y1x1 = pe.sinusoidal_encoding(anchor_y1x1, self.d_coord // 2, device=self.device)
+                q_tgt_y2x2 = pe.sinusoidal_encoding(anchor_y2x2, self.d_coord // 2, device=self.device)
 
         cls_logits = self.classify_mlp(q_tgt_cont)
 
         xy_index = [1, 0]
-        x1y1 = y1x1[..., xy_index]
-        x2y2 = y2x2[..., xy_index]
+        x1y1 = anchor_y1x1[..., xy_index]
+        x2y2 = anchor_y2x2[..., xy_index]
         boxes = torch.concat((x1y1, x2y2), dim=-1)
         return boxes, cls_logits
 

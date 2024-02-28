@@ -1,4 +1,5 @@
 from od import od_image, anno, box
+from od.config import n_query
 from common import image
 import torch
 import random
@@ -34,7 +35,7 @@ def get_gt_by_img_id(img_id, img_dict, img_dir, resize, random_shift, n_query):
 
 
 class OdDataset(Dataset):
-    def __init__(self, img_dict, train=True, sample_num=None, resize=img_size, n_query=300, random_shift=False):
+    def __init__(self, img_dict, train=True, sample_num=None, resize=img_size, n_query=n_query, random_shift=False):
         self.sample_num = sample_num
         self.resize = resize
         self.random_shift = random_shift

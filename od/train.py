@@ -1,3 +1,5 @@
+import os
+
 import torch
 from torch import nn, optim
 from od import anno, detr_dataset, detr_model, match
@@ -30,7 +32,7 @@ def eval_pred(cls_logits_pred, cids_gt, query_pos_mask):
 
 cls_loss_fun = nn.CrossEntropyLoss(reduction='none')
 
-model = detr_model.DETR(d_cont=256, device=device)
+model = detr_model.DETR(d_cont=256, n_query=n_query, device=device)
 model.to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
@@ -40,8 +42,8 @@ dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task=
 
 
 def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
-    ds = detr_dataset.OdDataset(dicts, train=True, sample_num=population, random_shift=True)
-    dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
+    ds = detr_dataset.OdDataset(dicts, train=True, sample_num=population, random_shift=False)
+    dl = DataLoader(ds, batch_size=batch_size, shuffle=False)
     for i in range(epoch):
         for j, (img, boxes_gt_xyxy, cids_gt, img_id) in enumerate(dl):
             img = img.to(device)
@@ -61,6 +63,9 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
 
             cls_pos_num = torch.sum(gt_pos_mask, dim=-1)
 
+            matched_pos_gt = torch.where(cols < cls_pos_num)
+            matched_pos_gt = [(matched_pos_gt[0][i].item(), matched_pos_gt[1][i].item()) for i in range(len(matched_pos_gt[0]))]
+
             gt_matched_indices_batch = torch.arange(B, device=device).view(B, 1). \
                 expand(B, n_query).contiguous().view(B * n_query)
 
@@ -74,7 +79,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
             cids_gt_onehot = torch.zeros(B * n_query, category_num, device=device).scatter_(1, cids_gt.unsqueeze(1), 1)
             cids_num = cids_gt_onehot.sum(dim=0)
             alpha = focalloss.cal_weights(cids_num, recover=weight_recover)
-            cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt, alpha).mean() * 10
+            cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt, alpha).mean()
             # cls_loss = cls_loss_fun(cls_logits_pred, cids_gt)
 
             # cls_loss = -torch.log_softmax(cls_logits_pred, dim=-1) * cids_gt_onehot
@@ -101,14 +106,29 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
                   f'cl {cls_loss.detach().item():.3f}|b'
                   f'l {box_loss.detach().item():.3f}|'
                   f'ac {accu:.3f}|rc {recall:.3f}: {n_tp}/{n_pos}|'
+                  # f'match {matched_pos_gt}|'
                   f'img {" ".join(img_id)}')
 
 
 if __name__ == '__main__':
-    model_file = f'/Users/zx/Documents/ml/restart/resources/od_detr.pt'
-    # model.load_state_dict(torch.load(model_file))
+    model_dir = '/Users/zx/Documents/ml/restart/resources'
+    model_files = os.listdir(model_dir)
+    model_files = [f for f in model_files if f.endswith('.pt')]
+    if len(model_files) == 0:
+        model_path_old = None
+        latest_version = -1
+    else:
+        versions = [int(f.split('.')[0].split('_')[-1]) for f in model_files]
+        latest_version = max(versions)
+        model_path_old = f'{model_dir}/od_detr_{latest_version}.pt'
+        model.load_state_dict(torch.load(model_path_old))
     for i in range(500):
-        # train(1, batch_size=2, population=1000, num_sample=i, weight_recover=.5)
-        train(1000, batch_size=2, population=2, num_sample=i, weight_recover=1)
-        # torch.save(model.state_dict(), model_file)
-        break
+        batch = latest_version + 1 + i
+        train(1, batch_size=2, population=10, num_sample=batch, weight_recover=1)
+        # train(300, batch_size=2, population=2, num_sample=i, weight_recover=1)
+        model_path_new = f'{model_dir}/od_detr_{batch}.pt'
+        torch.save(model.state_dict(), model_path_new)
+        if model_path_old is not None:
+            os.remove(model_path_old)
+        model_path_old = model_path_new
+        # break
