@@ -37,39 +37,41 @@ class Embedding2D(nn.Module):
 
 
 class Embedding1D(nn.Module):
-    def __init__(self, N, num_feat, device=torch.device('mps')):
+    def __init__(self, N, num_feat, uniform=False):
         super().__init__()
-        self.device = device
         self.N = N
         self.embed = nn.Embedding(N, num_feat)
-        self.reset_parameters()
+        if uniform:
+            self.reset_parameters()
 
     def reset_parameters(self):
         nn.init.uniform_(self.embed.weight)
 
-    def forward(self, B):
-        indices = torch.arange(self.N, device=self.device)
+    def forward(self, x):
+        B = x.shape[0]
+        indices = torch.arange(self.N, device=x.device)
         emb = self.embed(indices)
         return emb.unsqueeze(0).repeat(B, 1, 1)
 
 
-def gen_pos_2d(x, device=torch.device('mps'), feature_map_size=max(img_size) // 8):
+def gen_pos_2d(x):
     B, H, W, C = x.shape
-    row_indices = torch.arange(H, device=device).unsqueeze(1).repeat(1, W).unsqueeze(-1)
-    col_indices = torch.arange(W, device=device).unsqueeze(0).repeat(H, 1).unsqueeze(-1)
-    positions = torch.concat(((row_indices + 0.5) / feature_map_size, (col_indices + 0.5) / feature_map_size,), dim=-1)
+    max_size = max(H, W)
+    row_indices = torch.arange(H, device=x.device).unsqueeze(1).repeat(1, W).unsqueeze(-1)
+    col_indices = torch.arange(W, device=x.device).unsqueeze(0).repeat(H, 1).unsqueeze(-1)
+    positions = torch.concat(((col_indices + 0.5) / max_size, (row_indices + 0.5) / max_size), dim=-1)
     positions = positions.unsqueeze(0).repeat(B, 1, 1, 1)
     return positions
 
 
-def sinusoidal_encoding(x, d, temperature=20, device=torch.device('mps')):
+def sinusoidal_encoding(coord, d, temperature=20):
     half_d = d // 2
     half_range = list(range(half_d))
-    sin_indices = torch.tensor([2 * i for i in half_range], device=device)
-    cos_indices = torch.tensor([2 * i + 1 for i in half_range], device=device)
-    b, l, n = x.shape
-    x = x.view(b, l, n, 1).expand(b, l, n, d)
-    x_clone = torch.clone(x)
-    x_clone[..., sin_indices] = torch.sin(x[..., sin_indices] / temperature**(sin_indices / d))
-    x_clone[..., cos_indices] = torch.cos(x[..., cos_indices] / temperature**((cos_indices - 1) / d))
+    sin_indices = torch.tensor([2 * i for i in half_range], device=coord.device)
+    cos_indices = torch.tensor([2 * i + 1 for i in half_range], device=coord.device)
+    b, l, n = coord.shape
+    coord = coord.view(b, l, n, 1).expand(b, l, n, d)
+    x_clone = torch.clone(coord)
+    x_clone[..., sin_indices] = torch.sin(coord[..., sin_indices] / temperature ** (sin_indices / d))
+    x_clone[..., cos_indices] = torch.cos(coord[..., cos_indices] / temperature ** ((cos_indices - 1) / d))
     return x_clone.view(b, l, n * d)

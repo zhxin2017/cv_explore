@@ -31,11 +31,10 @@ def eval_pred(cls_logits_pred, cids_gt, query_pos_mask):
 
 
 cls_loss_fun = nn.CrossEntropyLoss(reduction='none')
-
-model = detr_model.DETR(d_cont=256, n_query=n_query, device=device)
+model = detr_model.DETR(d_cont=384, d_pos=128, d_anchor=256, n_head=8, n_enc_layer=10, n_dec_layer=8,  device=device)
 model.to(device)
 
-optimizer = optim.Adam(model.parameters(), lr=1e-5)
+optimizer = optim.Adam(model.parameters(), lr=1e-4)
 # alpha = torch.tensor(loss_weights, device=device)**0.8
 
 dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
@@ -95,7 +94,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
             accu, recall, n_pos, n_tp = eval_pred(cls_logits_pred, cids_gt, query_pos_mask)
             box_loss = box_loss.sum() / (n_pos + 1e-5)
 
-            loss = cls_loss + box_loss
+            loss = cls_loss * 2 + box_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -103,7 +102,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.8):
             optimizer.step()
 
             print(f'smp {num_sample}, epoch {i + 1}/{epoch}, batch {j}|'
-                  f'cl {cls_loss.detach().item():.3f}|b'
+                  f'cl {cls_loss.detach().item() * 10:.3f}|b'
                   f'l {box_loss.detach().item():.3f}|'
                   f'ac {accu:.3f}|rc {recall:.3f}: {n_tp}/{n_pos}|'
                   # f'match {matched_pos_gt}|'
@@ -121,11 +120,16 @@ if __name__ == '__main__':
         versions = [int(f.split('.')[0].split('_')[-1]) for f in model_files]
         latest_version = max(versions)
         model_path_old = f'{model_dir}/od_detr_{latest_version}.pt'
-        model.load_state_dict(torch.load(model_path_old))
+        saved_state = torch.load(model_path_old)
+        # state = model.state_dict()
+        # for k, v in saved_state.items():
+        #     if k in state:
+        #         state[k] = v
+        model.load_state_dict(saved_state)
     for i in range(500):
         batch = latest_version + 1 + i
-        train(1, batch_size=2, population=10, num_sample=batch, weight_recover=1)
-        # train(300, batch_size=2, population=2, num_sample=i, weight_recover=1)
+        train(1, batch_size=2, population=1000, num_sample=batch, weight_recover=1)
+        # train(1000, batch_size=2, population=2, num_sample=i, weight_recover=0.3)
         model_path_new = f'{model_dir}/od_detr_{batch}.pt'
         torch.save(model.state_dict(), model_path_new)
         if model_path_old is not None:

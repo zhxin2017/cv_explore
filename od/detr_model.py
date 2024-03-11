@@ -2,114 +2,100 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from model import base, pe, tsfm
-import util
-from od import config
+from od import anchor, config
 
 
-class DetrDecoderLayer(nn.Module):
-    def __init__(self, n_head, d_query, d_cont, omit_sa=False):
+class DetrEncoder(nn.Module):
+    def __init__(self, n_head, d_cont, d_pos, n_enc_layer):
         super().__init__()
-        self.omit_sa = omit_sa
-        self.sa = tsfm.CrossAttention(n_head, d_query, d_query)
-        self.ca = tsfm.CrossAttention(n_head, d_query, d_query)
-        self.ffn = base.MLP(d_query, d_query * 2, d_cont, 2)
-        self.ln = nn.LayerNorm(d_cont)
+        d_q = d_cont + d_pos
+        self.d_pos = d_pos
+        self.encoder_layers = nn.ModuleList()
+        for i in range(n_enc_layer):
+            decoder_layer = tsfm.EncoderLayer(d_q, d_cont, n_head)
+            self.encoder_layers.append(decoder_layer)
+        self.pos_emb = None
 
-    def forward(self, q_tgt_cont, q_tgt_x1y1, q_tgt_x2y2, k_src_xy, v_src_cont):
-        q_ca = torch.concat((q_tgt_cont, q_tgt_x2y2, q_tgt_x1y1), dim=-1)
-        k_ca = torch.concat((v_src_cont, k_src_xy, k_src_xy), dim=-1)
-        v_ca = k_ca
-        ca_out = self.ca(q_ca, k_ca, v_ca)
+    def forward(self, x):
+        B, H, W, C = x.shape
+        coord = pe.gen_pos_2d(x).view(B, H * W, 2)
+        pos_emb = pe.sinusoidal_encoding(coord, self.d_pos // 2)
+        self.pos_emb = pos_emb
+        x = x.view(B, H * W, -1)
 
-        if not self.omit_sa:
-            sa_out = self.sa(ca_out, ca_out, ca_out)
-        else:
-            sa_out = ca_out
+        for enc in self.encoder_layers:
+            qk = torch.concat([x, pos_emb], dim=-1)
+            x = enc(qk, x)
 
-        out = self.ln(F.relu(self.ffn(sa_out)))
-        return out
+        return x
+
+
+class DetrDecoder(nn.Module):
+    def __init__(self, n_head, d_v, d_anchor, n_dec_layer):
+        super().__init__()
+        d_q = d_v + d_anchor
+        self.d_anchor = d_anchor
+        self.d_v = d_v
+        self.decoder_layers = nn.ModuleList()
+        for i in range(n_dec_layer):
+            decoder_layer = tsfm.DecoderLayer(d_q, d_v, d_v, n_head, ommit_sa=i==0)
+            self.decoder_layers.append(decoder_layer)
+        self.q_cont_emb = pe.Embedding1D(1, self.d_v)
+        self.coord_delta_reg = base.MLP(d_v, d_v * 2, 4, 2)
+        self.q_ln = nn.LayerNorm(d_v)
+        self.cls_reg = base.MLP(d_v, d_v * 2, config.category_num, 2)
+
+    def forward(self, anchors, memory):
+        B = memory.shape[0]
+        boxes = anchors.unsqueeze(0).repeat(B, 1, 1)
+        anchors_emb = pe.sinusoidal_encoding(boxes, self.d_anchor // 4)
+        q_cont = torch.zeros(B, config.n_query, self.d_v, device=memory.device)
+        # q_cont = self.q_cont_emb(memory).repeat(1, config.n_query, 1)
+        q = torch.concat([q_cont, anchors_emb], dim=-1)
+        for dec in self.decoder_layers:
+            q_cont = dec(q, memory, memory)
+            anchors_delta = F.tanh(self.coord_delta_reg(self.q_ln(q_cont))) / 16
+            boxes = anchors_delta + boxes
+            anchors_emb = pe.sinusoidal_encoding(boxes, self.d_anchor // 4)
+            q = torch.concat([q_cont, anchors_emb], dim=-1)
+
+        cls_logits = self.cls_reg(self.q_ln(q_cont))
+
+        return boxes, cls_logits
 
 
 class DETR(nn.Module):
-    def __init__(self, d_cont, n_head=8, n_enc_layer=10, n_dec_layer=8, n_query=300, device=torch.device('mps')):
+    def __init__(self, d_cont, d_pos, d_anchor, n_head=8, n_enc_layer=10, n_dec_layer=8, device=torch.device('mps')):
         super().__init__()
         self.d_cont = d_cont
         self.d_coord = d_cont // 2
-        d_dec = d_cont * 2
-        self.n_query = n_query
         self.n_dec_layer = n_dec_layer
         self.device = device
         self.cnn1 = nn.Conv2d(3, d_cont, (2, 2), stride=(2, 2))
         self.cnn2 = nn.Conv2d(d_cont, d_cont, (2, 2), stride=(2, 2))
         self.cnn3 = nn.Conv2d(d_cont, d_cont, (2, 2), stride=(2, 2))
+        self.cnn4 = nn.Conv2d(d_cont, d_cont, (2, 2), stride=(2, 2))
         self.cnn_ln = nn.LayerNorm(d_cont)
 
-        encoder_layers = []
-        for i in range(n_enc_layer):
-            encoder_layers.append(tsfm.EncoderLayer(d_cont + self.d_coord, n_head))
-        self.enc_dec_proj = nn.Linear(d_cont + self.d_coord, d_cont)
-        self.encoder = nn.ModuleList(encoder_layers)
+        self.encoder = DetrEncoder(n_head, d_cont, d_pos, n_enc_layer)
+        anchors = anchor.generate_anchors()
+        anchors = torch.tensor(anchors, device=device)
+        self.anchors = anchors
 
-        self.yx_delta_mlp = base.MLP(d_cont, d_cont * 2, 2, 2)
-        self.hw_delta_mlp = base.MLP(d_cont, d_cont * 2, 2, 2)
-        self.anchor_yx_emb = pe.Embedding1D(n_query, 2, device)
-        self.anchor_hw_emb = pe.Embedding1D(n_query, 2, device)
-        self.classify_mlp = base.MLP(d_cont, d_cont * 2, config.category_num, 2)
-
-        decoder_layers = []
-        for i in range(n_dec_layer):
-            decoder_layers.append(DetrDecoderLayer(n_head, d_dec, d_cont, omit_sa=(i == n_dec_layer - 1)))
-        self.decoder = nn.ModuleList(decoder_layers)
+        self.decoder = DetrDecoder(n_head, d_cont + d_pos, d_anchor, n_dec_layer)
 
     def forward(self, x):
         x = F.relu(self.cnn1(x))
         x = F.relu(self.cnn2(x))
         x = F.relu(self.cnn3(x))
+        x = F.relu(self.cnn4(x))
         x = x.permute([0, 2, 3, 1])
         x = self.cnn_ln(x)
 
-        B, H, W, C = x.shape
+        x = self.encoder(x)
+        x = torch.concat([x, self.encoder.pos_emb], dim=-1)
+        boxes, cls_logits = self.decoder(self.anchors, x)
 
-        enc_yx = pe.gen_pos_2d(x, self.device).view(B, H * W, 2)
-        enc_yx_emb = pe.sinusoidal_encoding(enc_yx, self.d_coord // 2, device=self.device)
-
-        x = x.view(B, H * W, self.d_cont)
-        x = torch.concat((x, enc_yx_emb), dim=-1)
-
-        for enc_layer in self.encoder:
-            x = enc_layer(x)
-
-        x = F.layer_norm(F.relu(self.enc_dec_proj(x)), [self.d_cont])
-
-        anchor_y1x1 = self.anchor_yx_emb(B)
-        anchor_hw = self.anchor_hw_emb(B)
-        anchor_y2x2 = anchor_y1x1 + anchor_hw
-
-        q_tgt_y1x1 = pe.sinusoidal_encoding(anchor_y1x1, self.d_coord // 2, device=self.device)
-        q_tgt_y2x2 = pe.sinusoidal_encoding(anchor_y2x2, self.d_coord // 2, device=self.device)
-        q_tgt_cont = torch.zeros(B, self.n_query, self.d_cont, device=self.device)
-
-        k_src_yx = enc_yx_emb
-
-        for i, dec_layer in enumerate(self.decoder):
-            v_src_cont = x
-            q_tgt_cont = dec_layer(q_tgt_cont, q_tgt_y1x1, q_tgt_y2x2, k_src_yx, v_src_cont)
-            tgt_y1x1_delta = self.yx_delta_mlp(q_tgt_cont)
-            tgt_hw_delta = self.hw_delta_mlp(q_tgt_cont)
-            anchor_y1x1 = F.sigmoid(util.inverse_sigmoid(anchor_y1x1) + tgt_y1x1_delta)
-            anchor_hw = F.sigmoid(util.inverse_sigmoid(anchor_hw) + tgt_hw_delta)
-            anchor_y2x2 = anchor_y1x1 + anchor_hw
-
-            if i < self.n_dec_layer - 1:
-                q_tgt_y1x1 = pe.sinusoidal_encoding(anchor_y1x1, self.d_coord // 2, device=self.device)
-                q_tgt_y2x2 = pe.sinusoidal_encoding(anchor_y2x2, self.d_coord // 2, device=self.device)
-
-        cls_logits = self.classify_mlp(q_tgt_cont)
-
-        xy_index = [1, 0]
-        x1y1 = anchor_y1x1[..., xy_index]
-        x2y2 = anchor_y2x2[..., xy_index]
-        boxes = torch.concat((x1y1, x2y2), dim=-1)
         return boxes, cls_logits
 
 

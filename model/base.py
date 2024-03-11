@@ -39,14 +39,17 @@ class MLP(nn.Module):
 
 
 class FFN(nn.Module):
+
     def __init__(self, dim):
         super().__init__()
-        self.linear1 = nn.Linear(dim, dim * 2)
-        self.linear2 = nn.Linear(dim * 2, dim)
+        self.c_fc = nn.Linear(dim, 4 * dim)
+        self.gelu = nn.GELU()
+        self.c_proj = nn.Linear(4 * dim, dim)
 
     def forward(self, x):
-        x = F.relu(self.linear1(x))
-        x = F.relu(self.linear2(x))
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
         return x
 
 

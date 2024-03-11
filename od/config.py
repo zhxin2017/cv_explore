@@ -79,7 +79,7 @@ categories = [{"supercategory": "person", "id": 1, "name": "person"},
               {"supercategory": "indoor", "id": 89, "name": "hair drier"},
               {"supercategory": "indoor", "id": 90, "name": "toothbrush"}]
 
-n_query = 256
+n_query = 742
 
 cid_to_name = {c['id']: c['name'] for c in categories}
 cid_to_name[0] = 'background'
