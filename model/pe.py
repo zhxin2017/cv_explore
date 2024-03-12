@@ -64,7 +64,7 @@ def gen_pos_2d(x):
     return positions
 
 
-def sinusoidal_encoding(coord, d, temperature=20):
+def sinusoidal_encoding(coord, d, temperature=.1):
     half_d = d // 2
     half_range = list(range(half_d))
     sin_indices = torch.tensor([2 * i for i in half_range], device=coord.device)
