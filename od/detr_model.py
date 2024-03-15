@@ -51,7 +51,11 @@ class DetrDecoder(nn.Module):
         self.decoder_layers = nn.ModuleList()
         self.coord_delta_regs = nn.ModuleList()
         for i in range(n_dec_layer):
-            decoder_layer = tsfm.DecoderLayer(d_q, d_v, d_v, n_head, ommit_sa=i==0)
+            if i == 0:
+                decoder_layer = tsfm.DecoderLayer(d_anchor, d_v, d_v, n_head, ommit_sa=True, residual=False)
+            else:
+                decoder_layer = tsfm.DecoderLayer(d_q, d_v, d_v, n_head, ommit_sa=False, residual=True)
+
             coord_delta_reg = base.MLP(d_v, d_v * 2, 4, 2)
             self.decoder_layers.append(decoder_layer)
             self.coord_delta_regs.append(coord_delta_reg)
@@ -64,15 +68,17 @@ class DetrDecoder(nn.Module):
         B = memory.shape[0]
         boxes = torch.tensor(self.anchors, device=memory.device).unsqueeze(0).repeat(B, 1, 1)
         anchors_emb = self.anchor_emb(boxes)
-        q_cont = torch.zeros(B, config.n_query, self.d_v, device=memory.device)
+        # q_cont = torch.zeros(B, config.n_query, self.d_v, device=memory.device)
         # q_cont = self.q_cont_emb(memory).repeat(1, config.n_query, 1)
-        q = torch.concat([q_cont, anchors_emb], dim=-1)
         for i in range(self.n_dec_layer):
+            if i == 0:
+                q = anchors_emb
+            else:
+                q = torch.concat([q_cont, anchors_emb], dim=-1)
             q_cont = self.decoder_layers[i](q, memory, memory)
             anchors_delta = F.tanh(self.coord_delta_regs[i](self.q_ln(q_cont))) / 16
             boxes = anchors_delta + boxes
             anchors_emb = self.anchor_emb(boxes)
-            q = torch.concat([q_cont, anchors_emb], dim=-1)
 
         cls_logits = self.cls_reg(self.q_ln(q_cont))
 
@@ -98,9 +104,11 @@ class DETR(nn.Module):
         x = self.cnn_ln(x)
 
         x = self.encoder(x)
+        enc_diff = (x[0] - x[1]).abs().mean()
         boxes, cls_logits = self.decoder(x)
+        logits_diff = (cls_logits[0] - cls_logits[1]).abs().mean()
 
-        return boxes, cls_logits
+        return boxes, cls_logits, enc_diff, logits_diff
 
 
 if __name__ == '__main__':

@@ -34,7 +34,7 @@ class MLP(nn.Module):
             torch.Tensor: the forward results of `MLP` layer
         """
         for i, layer in enumerate(self.layers):
-            x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+            x = F.gelu(layer(x)) if i < self.num_layers - 1 else layer(x)
         return x
 
 

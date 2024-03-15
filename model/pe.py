@@ -79,13 +79,12 @@ class Sinusoidal(nn.Module):
         cos_indices = torch.tensor([2 * i + 1 for i in half_range], device=pos.device)
         bsz, seq_len, pos_dim = pos.shape
         emb = pos.view(bsz, seq_len, pos_dim, 1).expand(bsz, seq_len, pos_dim, self.d)
-        emb[..., sin_indices] = torch.sin(emb[..., sin_indices] / self.temperature ** (sin_indices / self.d))
-        emb[..., cos_indices] = torch.cos(emb[..., cos_indices] / self.temperature ** ((cos_indices - 1) / self.d))
+        emb_ = torch.clone(emb)
+        emb_[..., sin_indices] = torch.sin(emb[..., sin_indices] / self.temperature ** (sin_indices / self.d))
+        emb_[..., cos_indices] = torch.cos(emb[..., cos_indices] / self.temperature ** ((cos_indices - 1) / self.d))
         if self.norm:
-            emb = self.ln(emb)
-        return emb.view(bsz, seq_len, pos_dim * self.d)
-
-
+            emb_ = self.ln(emb_)
+        return emb_.view(bsz, seq_len, pos_dim * self.d)
 
 
 if __name__ == '__main__':
