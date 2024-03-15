@@ -64,14 +64,33 @@ def gen_pos_2d(x):
     return positions
 
 
-def sinusoidal_encoding(coord, d, temperature=.1):
-    half_d = d // 2
-    half_range = list(range(half_d))
-    sin_indices = torch.tensor([2 * i for i in half_range], device=coord.device)
-    cos_indices = torch.tensor([2 * i + 1 for i in half_range], device=coord.device)
-    b, l, n = coord.shape
-    coord = coord.view(b, l, n, 1).expand(b, l, n, d)
-    x_clone = torch.clone(coord)
-    x_clone[..., sin_indices] = torch.sin(coord[..., sin_indices] / temperature ** (sin_indices / d))
-    x_clone[..., cos_indices] = torch.cos(coord[..., cos_indices] / temperature ** ((cos_indices - 1) / d))
-    return x_clone.view(b, l, n * d)
+class Sinusoidal(nn.Module):
+    def __init__(self, d, temperature=0.1, norm=True):
+        super().__init__()
+        self.d = d
+        self.temperature = temperature
+        self.norm = norm
+        self.ln = nn.LayerNorm(d)
+
+    def forward(self, pos):
+        half_d = self.d // 2
+        half_range = list(range(half_d))
+        sin_indices = torch.tensor([2 * i for i in half_range], device=pos.device)
+        cos_indices = torch.tensor([2 * i + 1 for i in half_range], device=pos.device)
+        bsz, seq_len, pos_dim = pos.shape
+        emb = pos.view(bsz, seq_len, pos_dim, 1).expand(bsz, seq_len, pos_dim, self.d)
+        emb[..., sin_indices] = torch.sin(emb[..., sin_indices] / self.temperature ** (sin_indices / self.d))
+        emb[..., cos_indices] = torch.cos(emb[..., cos_indices] / self.temperature ** ((cos_indices - 1) / self.d))
+        if self.norm:
+            emb = self.ln(emb)
+        return emb.view(bsz, seq_len, pos_dim * self.d)
+
+
+
+
+if __name__ == '__main__':
+    from od import anchor
+    anchors = anchor.generate_anchors()
+    anchors = torch.tensor(anchors).unsqueeze(0)
+    # emb = sinusoidal_encoding(anchors, 64)
+    pass

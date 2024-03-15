@@ -15,6 +15,6 @@ val_img_od_dict_file = f'{coco_dir}/annotations/val_img_od_dict.json'
 train_img_od_dict_file = f'{coco_dir}/annotations/train_img_od_dict.json'
 
 img_size = (480, 480)
-patch_size = 8
+patch_size = 16
 grid_size_x = img_size[1] // patch_size
 grid_size_y = img_size[0] // patch_size

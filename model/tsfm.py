@@ -42,14 +42,17 @@ class EncoderLayer(nn.Module):
     def __init__(self, q_dim, v_dim, n_head):
         super().__init__()
         self.v_dim = v_dim
+        self.q_ln = nn.LayerNorm(q_dim)
         self.v_ln = nn.LayerNorm(v_dim)
         self.self_attn = MultiheadAttention(n_head, q_dim, q_dim, v_dim)
         self.out_ln = nn.LayerNorm(v_dim)
         self.ffn = base.FFN(v_dim)
 
     def forward(self, qk, v):
-        x = self.v_ln(qk[..., :self.v_dim] + self.self_attn(qk, qk, v))
-        x = self.out_ln(x + self.ffn(x))
+        qk = self.q_ln(qk)
+        v = self.v_ln(v)
+        x = qk[..., :self.v_dim] + self.self_attn(qk, qk, v)
+        x = x + self.ffn(self.out_ln(x))
         return x
 
 
@@ -60,8 +63,8 @@ class DecoderLayer(nn.Module):
         self.v_dim = v_dim
         self.q_sa_ln = nn.LayerNorm(q_dim)
         self.self_attn = MultiheadAttention(n_head, q_dim, q_dim, q_dim)
-        # self.q_ca_ln = nn.LayerNorm(q_dim)
-        # self.k_ca_ln = nn.LayerNorm(k_dim)
+        self.q_ca_ln = nn.LayerNorm(q_dim)
+        self.k_ca_ln = nn.LayerNorm(k_dim)
         self.v_ca_ln = nn.LayerNorm(v_dim)
         self.cross_attn = MultiheadAttention(n_head, q_dim, k_dim, v_dim)
         self.out_ln = nn.LayerNorm(v_dim)
@@ -69,7 +72,11 @@ class DecoderLayer(nn.Module):
 
     def forward(self, x, k, v):
         if not self.ommit_sa:
-            x = self.q_sa_ln(x + self.self_attn(x, x, x))
-        x = self.v_ca_ln(x[..., :self.v_dim] + self.cross_attn(x, k, v))
-        x = self.out_ln(x + self.ffn(x))
+            x = self.q_sa_ln(x)
+            x = x + self.self_attn(x, x, x)
+        x = self.q_ca_ln(x)
+        k = self.k_ca_ln(k)
+        v = self.v_ca_ln(v)
+        x = x[..., :self.v_dim] + self.cross_attn(x, k, v)
+        x = x + self.ffn(self.out_ln(x))
         return x
