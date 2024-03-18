@@ -89,7 +89,50 @@ class Sinusoidal(nn.Module):
 
 if __name__ == '__main__':
     from od import anchor
+    import random
+    from matplotlib import pyplot as plt
+
     anchors = anchor.generate_anchors()
-    anchors = torch.tensor(anchors).unsqueeze(0)
-    # emb = sinusoidal_encoding(anchors, 64)
-    pass
+
+    fig, axes = plt.subplots(1, 7)
+    random.shuffle(anchors)
+    anchor = anchors[0]
+
+    img = torch.ones([128, 128, 3]) * 0.6
+    axes[0].imshow(img)
+    x1, y1, x2, y2 = anchors[0]
+    x1 = x1 * 128
+    y1 = y1 * 128
+    x2 = x2 * 128
+    y2 = y2 * 128
+    axes[0].add_patch(
+        plt.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor='red', lw=1))
+
+    pos_emb = Sinusoidal(64)
+    x = torch.rand([1, 30, 30, 2])
+    coord = gen_pos_2d(x).view(1, 900, 2)
+    pos_emb_ = pos_emb(coord).view(900, 128)
+
+    anchor = torch.tensor(anchor).view(1, 1, 4)
+    anchor_emb = pos_emb(anchor).view(1, 256)
+
+    x1_attn = (anchor_emb[:, :64] @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    axes[1].imshow(x1_attn.detach().numpy())
+
+    y1_attn = (anchor_emb[:, 64:128] @ pos_emb_[:, 64:].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    axes[2].imshow(y1_attn.detach().numpy())
+
+    x2_attn = (anchor_emb[:, 128:192] @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    axes[3].imshow(x2_attn.detach().numpy())
+
+    y2_attn = (anchor_emb[:, 192:] @ pos_emb_[:, 64:].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    axes[4].imshow(y2_attn.detach().numpy())
+
+    axes[5].imshow((x1_attn + y1_attn + x2_attn + y2_attn).detach().numpy())
+
+    x_middle = (anchor_emb[:, 128:192] + anchor_emb[:, :64]) / 2
+    print(x_middle.std())
+    x_middle_attn = ((x_middle) @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    axes[6].imshow(x_middle_attn.detach().numpy())
+    plt.pause(0)
+
