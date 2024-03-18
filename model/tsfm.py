@@ -4,20 +4,25 @@ import torch.nn.functional as F
 from model import base
 
 
-def attention(q, k, v):
-    d = q.shape[-1]
-    k = torch.transpose(k, -2, -1)
-    attn = F.softmax(q @ k / d ** 0.5, dim=-1) @ v
-    return attn
+class Attention(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, q, k, v):
+        d = q.shape[-1]
+        k = torch.transpose(k, -2, -1)
+        attn = F.softmax(q @ k / d ** 0.5, dim=-1) @ v
+        return attn
 
 
 class MultiheadAttention(nn.Module):
     def __init__(self, n_head, q_dim, k_dim, v_dim):
         super().__init__()
         self.n_head = n_head
-        self.q_proj = nn.Linear(q_dim, k_dim,bias=False)
+        self.q_proj = nn.Linear(q_dim, k_dim, bias=False)
         self.k_proj = nn.Linear(k_dim, k_dim, bias=False)
         self.v_proj = nn.Linear(v_dim, v_dim, bias=False)
+        self.attn = Attention()
         self.out_proj = nn.Linear(v_dim, v_dim, bias=False)
 
     def forward(self, q, k, v):
@@ -31,10 +36,10 @@ class MultiheadAttention(nn.Module):
         k = k.view(b, lv, self.n_head, -1).transpose(1, 2)
         v = v.view(b, lv, self.n_head, -1).transpose(1, 2)
 
-        out = attention(q, k, v)
-        out = out.transpose(1, 2).contiguous().view(b, lq, -1)
+        attn = self.attn(q, k, v)
+        attn = attn.transpose(1, 2).contiguous().view(b, lq, -1)
 
-        out = self.out_proj(out)
+        out = self.out_proj(attn)
         return out
 
 
