@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from common.config import img_size
+from common.config import grid_size_x, grid_size_y
 
 
 class Embedding2D(nn.Module):
@@ -54,13 +54,18 @@ class Embedding1D(nn.Module):
         return emb.unsqueeze(0).repeat(B, 1, 1)
 
 
-def gen_pos_2d(x):
-    B, H, W, C = x.shape
-    max_size = max(H, W)
-    row_indices = torch.arange(H, device=x.device).unsqueeze(1).repeat(1, W).unsqueeze(-1)
-    col_indices = torch.arange(W, device=x.device).unsqueeze(0).repeat(H, 1).unsqueeze(-1)
-    positions = torch.concat(((col_indices + 0.5) / max_size, (row_indices + 0.5) / max_size), dim=-1)
-    positions = positions.unsqueeze(0).repeat(B, 1, 1, 1)
+def gen_pos_2d(x, pos='center'):
+    assert pos in ['center', 'x1y1', 'x2y2']
+    max_size = max(grid_size_y, grid_size_x)
+    row_indices = torch.arange(grid_size_y, device=x.device).unsqueeze(1).repeat(1, grid_size_x).unsqueeze(-1)
+    col_indices = torch.arange(grid_size_x, device=x.device).unsqueeze(0).repeat(grid_size_y, 1).unsqueeze(-1)
+    if pos == 'center':
+        positions = torch.concat(((col_indices + 0.5) / max_size, (row_indices + 0.5) / max_size), dim=-1)
+    elif pos == 'x1y1':
+        positions = torch.concat((col_indices / max_size, row_indices / max_size), dim=-1)
+    else:
+        positions = torch.concat(((col_indices + 1) / max_size, (row_indices + 1) / max_size), dim=-1)
+    positions = positions.unsqueeze(0).repeat(x.shape[0], 1, 1, 1)
     return positions
 
 

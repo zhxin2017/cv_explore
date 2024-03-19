@@ -1,12 +1,13 @@
 from od import anno, detr_dataset
 import torch
 from tqdm import tqdm
+from torch.utils.data import DataLoader
 from common.config import train_annotation_file, train_img_od_dict_file
-from od.config import cid_to_occurrence, category_num, n_query
+from od.config import cid_to_occurrence, n_cls, n_query
 
 
 def cal_cid_occurrence():
-    cid_to_occurrence = {i: 0 for i in range(category_num)}
+    cid_to_occurrence = {i: 0 for i in range(n_cls)}
     dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
     ds = detr_dataset.OdDataset(dicts, cid_only=True)
     for img, bboxes_padded, indices_padded, num_box, img_id in tqdm(ds):
@@ -16,19 +17,37 @@ def cal_cid_occurrence():
             cid_to_occurrence[ind] = cid_to_occurrence[ind] + 1
     return cid_to_occurrence
 
-min_occr = 5000
-# min_occr = min([occr for occr in cid_to_occurrence.values() if occr > 0])
 
-cid_weights = [0] * category_num
-for cid, occur in cid_to_occurrence.items():
-    if occur == 0:
-        continue
-    weight = min_occr / occur
-    if weight > 1:
-        weight = 1
-    cid_weights[cid] = weight
-print(cid_weights)
+def cal_weights():
 
+    min_occr = 5000
+    # min_occr = min([occr for occr in cid_to_occurrence.values() if occr > 0])
+
+    cid_weights = [0] * n_cls
+    for cid, occur in cid_to_occurrence.items():
+        if occur == 0:
+            continue
+        weight = min_occr / occur
+        if weight > 1:
+            weight = 1
+        cid_weights[cid] = weight
+    print(cid_weights)
+'''
+imgs = set()
+population = 1000
+dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+for i in range(500):
+    print(f'{i} / 500')
+    ds = detr_dataset.OdDataset(dicts, train=True, sample_num=population, random_shift=False, cid_only=True)
+    dl = DataLoader(ds, batch_size=2, shuffle=False)
+    print(len(ds))
+    for img, boxes_gt_xyxy, cids_gt, _, img_id in dl:
+        imgs.update(set(img_id))
+    print(len(imgs)) # 107145
+'''
+dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+ds = detr_dataset.OdDataset(dicts, train=True, random_shift=False, cid_only=True)
+print(len(ds))
 
 # obj_cnt = 0
 # for i, objs in dicts.items():

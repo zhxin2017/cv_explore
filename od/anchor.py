@@ -1,28 +1,26 @@
+from od.config import anchor_stride, anchor_max_size
+
 
 def generate_anchors():
-
-    xy_stride = 16
-    wh_stride = 16
-    W = 128
-    H = 128
+    anchor_max_size_W = anchor_max_size
+    anchor_max_size_H = anchor_max_size
     ratio_thresh = 5
 
     anchors = []
-    for h in range(16, H, wh_stride):
-        for w in range(16, W, wh_stride):
+    for h in range(anchor_stride, anchor_max_size_H + 1, anchor_stride):
+        for w in range(anchor_stride, anchor_max_size_W + 1, anchor_stride):
             ratio = max(w, h) / min(w, h)
             # print(ratio)
             if ratio > ratio_thresh:
                 continue
-            for y in range(8, H, xy_stride):
-                for x in range(8, W, xy_stride):
-                    x1 = x
-                    y1 = y
+            for y1 in range(0, anchor_max_size_H, anchor_stride):
+                for x1 in range(0, anchor_max_size_W, anchor_stride):
                     x2 = x1 + w
                     y2 = y1 + h
-                    if x2 > W - xy_stride / 2 or y2 > H - xy_stride / 2:
+                    if x2 > anchor_max_size_W - anchor_stride / 2 or y2 > anchor_max_size_H - anchor_stride / 2:
                         continue
-                    anchors.append([x1 / W, y1 / H, x2 / W, y2 / H])
+                    anchors.append([x1 / anchor_max_size_W, y1 / anchor_max_size_H, x2 / anchor_max_size_W,
+                                    y2 / anchor_max_size_H])
     return anchors
 
 
@@ -51,5 +49,6 @@ if __name__ == '__main__':
             y1 = y1 * 128
             x2 = x2 * 128
             y2 = y2 * 128
-            axes[i, j].add_patch(plt.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor=random.choice(colors), lw=1))
+            axes[i, j].add_patch(
+                plt.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor=random.choice(colors), lw=1))
     plt.pause(0)
