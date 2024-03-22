@@ -4,3 +4,4 @@ mnist
 __pycache__/
 *.pyc
 *.pt
+/resources

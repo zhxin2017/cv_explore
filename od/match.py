@@ -15,7 +15,7 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask):
     cids_gt = cids_gt.view(B, 1, N).expand(B, N, N).contiguous().view(-1)
     cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred, cids_gt).view(B, N, N) * gt_pos_mask
 
-    total_loss = iouloss + cls_loss * .1
+    total_loss = iouloss + cls_loss * 0
     total_loss[total_loss == torch.nan] = 1e8
 
     rows = []

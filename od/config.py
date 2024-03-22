@@ -89,8 +89,8 @@ loss_weights = [6.281893960876112e-05, 0.027567499021353786, 0.9562057754828839,
 
 n_cls = 91
 
-anchor_stride = 4
-anchor_max_size = 32
+anchor_stride = 8
+anchor_max_size = 64
 
 # anchor_stride = 15
 # anchor_max_size = 120

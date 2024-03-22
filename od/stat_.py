@@ -3,13 +3,17 @@ import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from common.config import train_annotation_file, train_img_od_dict_file
-from od.config import cid_to_occurrence, n_cls, n_query
+from od.config import cid_to_occurrence, n_cls
+from od import anchor
+
+n_query = len(anchor.generate_anchors())
+
 
 
 def cal_cid_occurrence():
     cid_to_occurrence = {i: 0 for i in range(n_cls)}
     dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
-    ds = detr_dataset.OdDataset(dicts, cid_only=True)
+    ds = detr_dataset.OdDataset(dicts, n_query, cid_only=True)
     for img, bboxes_padded, indices_padded, num_box, img_id in tqdm(ds):
         cid_to_occurrence[0] = cid_to_occurrence[0] + n_query - num_box
         for i in indices_padded[:num_box]:
@@ -17,7 +21,7 @@ def cal_cid_occurrence():
             cid_to_occurrence[ind] = cid_to_occurrence[ind] + 1
     return cid_to_occurrence
 
-
+print(cal_cid_occurrence())
 def cal_weights():
 
     min_occr = 5000
@@ -32,6 +36,8 @@ def cal_weights():
             weight = 1
         cid_weights[cid] = weight
     print(cid_weights)
+
+# cal_weights()
 '''
 imgs = set()
 population = 1000
@@ -45,9 +51,9 @@ for i in range(500):
         imgs.update(set(img_id))
     print(len(imgs)) # 107145
 '''
-dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
-ds = detr_dataset.OdDataset(dicts, train=True, random_shift=False, cid_only=True)
-print(len(ds))
+# dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+# ds = detr_dataset.OdDataset(dicts, train=True, random_shift=False, cid_only=True)
+# print(len(ds))
 
 # obj_cnt = 0
 # for i, objs in dicts.items():

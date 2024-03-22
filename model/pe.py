@@ -98,8 +98,9 @@ if __name__ == '__main__':
     from matplotlib import pyplot as plt
 
     anchors = anchor.generate_anchors()
+    ln = nn.LayerNorm(64)
 
-    fig, axes = plt.subplots(1, 7)
+    fig, axes = plt.subplots(1, 7, figsize=(35, 5))
     random.shuffle(anchors)
     anchor = anchors[0]
 
@@ -114,30 +115,33 @@ if __name__ == '__main__':
         plt.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor='red', lw=1))
 
     pos_emb = Sinusoidal(64)
-    x = torch.rand([1, 30, 30, 2])
-    coord = gen_pos_2d(x).view(1, 900, 2)
-    pos_emb_ = pos_emb(coord).view(900, 128)
+    x = torch.rand([1, grid_size_y, grid_size_x, 2])
+    coord = gen_pos_2d(x).view(1, grid_size_x * grid_size_y, 2)
+    pos_emb_ = pos_emb(coord).view(grid_size_x * grid_size_y, 128)
 
     anchor = torch.tensor(anchor).view(1, 1, 4)
     anchor_emb = pos_emb(anchor).view(1, 256)
 
-    x1_attn = (anchor_emb[:, :64] @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    x1_attn = (anchor_emb[:, :64] @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(grid_size_y, grid_size_x)
     axes[1].imshow(x1_attn.detach().numpy())
 
-    y1_attn = (anchor_emb[:, 64:128] @ pos_emb_[:, 64:].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    y1_attn = (anchor_emb[:, 64:128] @ pos_emb_[:, 64:].transpose(0, 1)).softmax(dim=-1).view(grid_size_y, grid_size_x)
     axes[2].imshow(y1_attn.detach().numpy())
 
-    x2_attn = (anchor_emb[:, 128:192] @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    x2_attn = (anchor_emb[:, 128:192] @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(grid_size_y, grid_size_x)
     axes[3].imshow(x2_attn.detach().numpy())
 
-    y2_attn = (anchor_emb[:, 192:] @ pos_emb_[:, 64:].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    y2_attn = (anchor_emb[:, 192:] @ pos_emb_[:, 64:].transpose(0, 1)).softmax(dim=-1).view(grid_size_y, grid_size_x)
     axes[4].imshow(y2_attn.detach().numpy())
 
     axes[5].imshow((x1_attn + y1_attn + x2_attn + y2_attn).detach().numpy())
 
-    x_middle = (anchor_emb[:, 128:192] + anchor_emb[:, :64]) / 2
+    x_middle = ln(anchor_emb[:, 128:192] * .8 + anchor_emb[:, :64] * .2)
     print(x_middle.std())
-    x_middle_attn = ((x_middle) @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(30, 30)
+    x1, y1, x2, y2 = anchor[0,0] * grid_size_x
+    print(x1, y1, x2, y2)
+    print(x2 * .8 + x1 * .2)
+    x_middle_attn = ((x_middle) @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(grid_size_y, grid_size_x)
     axes[6].imshow(x_middle_attn.detach().numpy())
     plt.pause(0)
 
