@@ -1,8 +1,5 @@
-import torch
 
-
-def eval_pred(cls_logits_pred, cids_gt, query_pos_mask):
-    cls_pred = torch.argmax(cls_logits_pred, dim=-1)
+def eval_pred(cls_pred, cids_gt, query_pos_mask):
     tp_mask = (cls_pred == cids_gt) * query_pos_mask
     query_neg_mask = 1 - query_pos_mask
     tp = tp_mask.sum()
@@ -15,5 +12,5 @@ def eval_pred(cls_logits_pred, cids_gt, query_pos_mask):
     accu = (tp + tn) / (n_cls + 1e-5)
     recall = tp / (tp + fn + 1e-5)
     f1 = 2 * prec * recall / (prec + recall)
-    return accu, recall, f1, n_pos, tp
+    return accu, recall, f1, tp
 

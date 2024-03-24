@@ -34,7 +34,7 @@ class MHA(nn.Module):
         b, lq, lv = q.shape[0], q.shape[1], v.shape[1]
 
         q = q.view(b, lq, self.n_head, -1).transpose(1, 2)
-        k = k.view(b, lq, self.n_head, -1).transpose(1, 2)
+        k = k.view(b, lv, self.n_head, -1).transpose(1, 2)
         attn = attention(q, k)
 
         if self.project_v:
@@ -44,13 +44,14 @@ class MHA(nn.Module):
             v = v.transpose(1, 2).contiguous().view(b, lq, -1)
             v = self.out_proj(v)
         else:
-            attn = attn.mean(dim=1)
+            v = v.view(b, 1, lv, -1)
             v = attn @ v
+            v = v.transpose(1, 2).contiguous()
         return v
 
 
 class AttnLayer(nn.Module):
-    def __init__(self, dq, dk, dv, n_head):
+    def __init__(self, dq, dk, dv, n_head, residual=True):
         super().__init__()
         self.dq = dq
         self.dv = dv
@@ -61,10 +62,11 @@ class AttnLayer(nn.Module):
         self.out_ln = nn.LayerNorm(dv)
 
         self.self_attn = MHA(dq, dk, dv, n_head)
-
         self.ffn = base.FFN(dv)
 
-        if dq != dv:
+        self.residual = residual
+
+        if dq != dv and residual:
             self.q_residual_proj = nn.Linear(dq, dv, bias=False)
 
     def forward(self, q, k, v):
@@ -72,41 +74,14 @@ class AttnLayer(nn.Module):
         k = self.k_ln(k)
         v = self.v_ln(v)
 
-        if self.dq != self.dv:
-            q_residual = self.q_residual_proj(q)
+        if self.residual:
+            if self.dq != self.dv:
+                q_residual = self.q_residual_proj(q)
+            else:
+                q_residual = q
         else:
-            q_residual = q
+            q_residual = 0
 
         x = q_residual + self.self_attn(q, k, v)
         x = x + self.ffn(self.out_ln(x))
         return x
-
-
-class DecoderLayer(nn.Module):
-    def __init__(self, d_q, d_k, d_v, n_head, ommit_sa=False, ca_residual=True):
-        super().__init__()
-        self.ommit_sa = ommit_sa
-        self.ca_residual = ca_residual
-        self.d_v = d_v
-        self.q_sa_ln = nn.LayerNorm(d_q)
-        self.self_attn = MHA(d_q, d_q, d_q, n_head)
-        self.q_ca_ln = nn.LayerNorm(d_q)
-        self.k_ca_ln = nn.LayerNorm(d_k)
-        self.v_ca_ln = nn.LayerNorm(d_v)
-        self.cross_attn = MHA(d_q, d_k, d_v, n_head)
-        self.out_ln = nn.LayerNorm(d_v)
-        self.ffn = base.FFN(d_v)
-
-    def forward(self, q, k, v):
-        if not self.ommit_sa:
-            q = self.q_sa_ln(q)
-            q = q + self.self_attn(q, q, q)
-        q = self.q_ca_ln(q)
-        k = self.k_ca_ln(k)
-        v = self.v_ca_ln(v)
-        if self.ca_residual:
-            q = q[..., :self.d_v] + self.cross_attn(q, k, v)
-        else:
-            q = self.cross_attn(q, k, v)
-        q = q + self.ffn(self.out_ln(q))
-        return q

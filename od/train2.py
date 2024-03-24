@@ -2,7 +2,7 @@ import os
 import torch.nn.functional as F
 import torch
 from torch import nn, optim
-from od import anno, detr_dataset, detr_model, match, eval
+from od import anno, detr_dataset, detr_model2, match, eval
 from common.config import train_annotation_file, train_img_od_dict_file, img_size
 from od.config import loss_weights
 import focalloss
@@ -16,7 +16,7 @@ device = torch.device("mps")
 # device = torch.device("cpu")
 
 cls_loss_fun = nn.CrossEntropyLoss(reduction='none')
-model = detr_model.DETR(d_enc=512, d_coord_emb=64, n_enc_head=8, n_dec_head=8, n_enc_layer=18, n_dec_layer=6, exam_diff=True)
+model = detr_model2.DETR(d_enc=512, d_coord_emb=64, n_enc_head=8, n_dec_head=8, n_enc_layer=18, n_dec_layer=6, exam_diff=True)
 model.to(device)
 n_query = model.decoder.n_anchor
 

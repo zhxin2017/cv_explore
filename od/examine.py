@@ -49,7 +49,7 @@ def examine_attn(img, extractor, n_head, device):
     img_ = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img)
     img_ = img_.to(device)
     with torch.no_grad():
-        boxes_pred_xyxy, cls_logits_pred, _, _, features_attn, extremity_features_attn = extractor.model(img_)
+        boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_)
     boxes_pred_xyxy = boxes_pred_xyxy * max(img_size)
     cls_pred_sm = cls_logits_pred.softmax(-1)
     cls_pred = cls_pred_sm.argmax(-1)
@@ -86,17 +86,15 @@ def examine_attn(img, extractor, n_head, device):
         y2_anchor = y2_anchor * max(img_size)
         anchors.append([x1_anchor, y1_anchor, x2_anchor, y2_anchor])
 
-        # q = extractor._features['decoder.decoder_layers.5.cross_attn.q_proj']
-        # k = extractor._features['decoder.decoder_layers.5.cross_attn.k_proj']
-        #
-        # lq = q.shape[1]
-        # lk = k.shape[1]
-        #
-        # q = q.view(lq, n_head, -1).transpose(0, 1)
-        # k = k.view(lk, n_head, -1).transpose(0, 1)
-        # attn = attention(q, k)
+        q = extractor._features['decoder.decoder_layers.5.cross_attn.q_proj']
+        k = extractor._features['decoder.decoder_layers.5.cross_attn.k_proj']
 
-        attn = features_attn.view(n_head, 742, 32, 32)[:, obj_idx]
+        lq = q.shape[1]
+        lk = k.shape[1]
+
+        q = q.view(lq, n_head, -1).transpose(0, 1)
+        k = k.view(lk, n_head, -1).transpose(0, 1)
+        attn = attention(q, k)
 
         attns.append(attn)
 

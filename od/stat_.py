@@ -37,7 +37,7 @@ def cal_weights():
         cid_weights[cid] = weight
     print(cid_weights)
 
-# cal_weights()
+cal_weights()
 '''
 imgs = set()
 population = 1000
