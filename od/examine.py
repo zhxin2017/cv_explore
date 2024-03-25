@@ -1,6 +1,7 @@
 from typing import Dict, Iterable, Callable
 
 import sys
+
 sys.path.append('..')
 import torch
 from torch import nn, Tensor
@@ -8,7 +9,8 @@ from torch.utils.data import DataLoader
 
 from matplotlib import pyplot as plt
 from od import detr_dataset as ds
-from common.config import val_annotation_file, val_img_od_dict_file, val_img_dir, train_annotation_file, train_img_od_dict_file, train_img_dir, img_size
+from common.config import val_annotation_file, val_img_od_dict_file, val_img_dir, train_annotation_file, \
+    train_img_od_dict_file, train_img_dir, img_size
 from od.config import cid_to_name
 from torchvision import transforms
 from od import detr_model, anno
@@ -45,7 +47,7 @@ def attention(q, k):
     return attn
 
 
-def examine_attn(img, extractor, n_head, device):
+def examine_attn(img, extractor, n_head, device, q_module_name, k_module_name):
     img_ = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img)
     img_ = img_.to(device)
     with torch.no_grad():
@@ -86,8 +88,8 @@ def examine_attn(img, extractor, n_head, device):
         y2_anchor = y2_anchor * max(img_size)
         anchors.append([x1_anchor, y1_anchor, x2_anchor, y2_anchor])
 
-        q = extractor._features['decoder.decoder_layers.5.cross_attn.q_proj']
-        k = extractor._features['decoder.decoder_layers.5.cross_attn.k_proj']
+        q = extractor._features[q_module_name]
+        k = extractor._features[k_module_name]
 
         lq = q.shape[1]
         lk = k.shape[1]
@@ -96,41 +98,52 @@ def examine_attn(img, extractor, n_head, device):
         k = k.view(lk, n_head, -1).transpose(0, 1)
         attn = attention(q, k)
 
-        attns.append(attn)
+        attns.append(attn[:, obj_idx].view(n_head, 32, 32))
 
     return img[0], anchors, boxes, names, attns, n_head, boxes_pred_xyxy, cls_pred
 
 
-def draw_attn(img, anchors, boxes, names, attns, n_head, show_row_per_obj = 1):
+def draw_attn(img, anchors, boxes, names, attns, n_head):
     n_obj = len(anchors)
 
     if n_obj == 0:
         return
 
-    col = math.ceil((n_head + 1) // show_row_per_obj)
-
-    fig, axes = plt.subplots(n_obj * show_row_per_obj, col, figsize=(n_obj * show_row_per_obj * 4, col * 4))
+    fig, axes = plt.subplots(n_obj, n_head + 2, figsize=((n_head + 2) * 4, n_obj * 4))
 
     for i in range(n_obj):
 
-        axes[i * show_row_per_obj, 0].imshow(img)
-        axes[i * show_row_per_obj, 0].axis('off')
+        if n_obj == 1:
+            axes_ = axes
+        else:
+            axes_ = axes[i]
+
+        axes_[0].imshow(img)
+        axes_[0].axis('off')
 
         name = names[i]
 
         x1, y1, x2, y2 = boxes[i]
         x1_anchor, y1_anchor, x2_anchor, y2_anchor = anchors[i]
+        x1_anchor = x1_anchor.item()
+        y1_anchor = y1_anchor.item()
+        x2_anchor = x2_anchor.item()
+        y2_anchor = y2_anchor.item()
         attn = attns[i]
 
-        axes[i * show_row_per_obj, 0].add_patch(
+        axes_[0].add_patch(
             plt.Rectangle((x1_anchor, y1_anchor), x2_anchor - x1_anchor, y2_anchor - y1_anchor, fill=False,
                           edgecolor='green', lw=2))
-        axes[i * show_row_per_obj, 0].add_patch(plt.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor='red', lw=1))
-        axes[i * show_row_per_obj, 0].text(x1 + 2, y1 + 16, name, color='red')
+        axes_[0].add_patch(
+            plt.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor='red', lw=1))
+        axes_[0].text(x1 + 2, y1 + 16, name, color='red')
 
         for h in range(1, n_head + 1):
-            axes[i * show_row_per_obj + h // col, h % col].axis('off')
-            axes[i * show_row_per_obj + h // col, h % col].imshow(attn[h - 1].cpu().detach().numpy())
+            axes_[h].axis('off')
+            axes_[h].imshow(attn[h - 1].cpu().detach().numpy())
+
+        axes_[n_head + 1].axis('off')
+        axes_[n_head + 1].imshow(attn.mean(dim=0).cpu().detach().numpy())
     # plt.pause(0)
 
 
@@ -170,5 +183,3 @@ def pred_and_show(img, model, device, thresh=0.6):
             axes[b].text(x1 + 2, y1 + 16, name)
 
     return boxes_pred_xyxy, cls_pred
-
-

@@ -2,7 +2,7 @@ import os
 import torch.nn.functional as F
 import torch
 from torch import nn, optim
-from od import anno, detr_dataset, detr_model, match, eval
+from od import anno, detr_dataset, detr_model, match, eval, anchor
 from common.config import train_annotation_file, train_img_od_dict_file, img_size
 from od.config import loss_weights
 import focalloss
@@ -14,12 +14,13 @@ from torchvision import transforms
 
 device = torch.device("mps")
 # device = torch.device("cpu")
-
-cls_loss_fun = nn.CrossEntropyLoss(reduction='none')
-model = detr_model.DETR(d_enc=512, d_coord_emb=64, n_enc_head=8, n_dec_head=8, n_enc_layer=18, n_dec_layer=6, exam_diff=True)
+anchors = torch.tensor(anchor.generate_anchors(), device=device)
+model = detr_model.DETR(d_enc=384, d_coord_emb=32, n_enc_head=6, n_dec_head=6, n_enc_layer=24, n_dec_layer=12,
+                        anchors=anchors, exam_diff=True)
 model.to(device)
 n_query = model.decoder.n_anchor
 
+# cls_loss_fun = nn.CrossEntropyLoss(reduction='none')
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
 
 dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
@@ -44,7 +45,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             gt_pos_mask = gt_pos_mask.view(B, 1, n_query) * 1
 
             t = time.time()
-            _, cols = match.assign_query(boxes_gt_xyxy, boxes_pred_xyxy, cids_gt, cls_logits_pred, gt_pos_mask)
+            _, cols = match.assign_query(boxes_gt_xyxy, boxes_pred_xyxy, cids_gt, cls_logits_pred, gt_pos_mask, anchors=anchors)
             t_match = time.time() - t
             cols = torch.tensor(np.stack(cols), device=device)
 
@@ -80,7 +81,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             box_loss = box_loss * query_pos_mask
             box_loss = box_loss.sum() / (n_pos + 1e-5)
 
-            loss = cls_loss + box_loss
+            loss = cls_loss * 10 + box_loss
             optimizer.zero_grad()
             t = time.time()
             loss.backward()
@@ -118,8 +119,8 @@ if __name__ == '__main__':
         # model.load_state_dict(saved_state)
     for i in range(500):
         batch = latest_version + 1 + i
-        # train(1, batch_size=2, population=1000, num_sample=batch, weight_recover=.5, gamma=8)
-        train(500, batch_size=2, population=2, num_sample=i, weight_recover=0.5, gamma=8)
+        train(1, batch_size=2, population=1000, num_sample=batch, weight_recover=.5, gamma=2)
+        # train(300, batch_size=2, population=2, num_sample=i, weight_recover=0.5, gamma=2)
         model_path_new = f'{model_dir}/od_detr_{batch}.pt'
         torch.save(model.state_dict(), model_path_new)
         if model_path_old is not None:
