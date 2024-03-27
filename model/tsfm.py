@@ -18,7 +18,7 @@ class MHA(nn.Module):
         if d_head is not None:
             d_match = n_head * d_head
         else:
-            d_match = min(dq, dk)
+            d_match = max(dq, dk, dv)
 
         self.q_proj = nn.Linear(dq, d_match, bias=False)
         self.k_proj = nn.Linear(dk, d_match, bias=False)
@@ -51,7 +51,7 @@ class MHA(nn.Module):
 
 
 class AttnLayer(nn.Module):
-    def __init__(self, dq, dk, dv, n_head, residual=True):
+    def __init__(self, dq, dk, dv, n_head, residual=True, d_head=None):
         super().__init__()
         self.dq = dq
         self.dv = dv
@@ -61,7 +61,7 @@ class AttnLayer(nn.Module):
 
         self.out_ln = nn.LayerNorm(dv)
 
-        self.self_attn = MHA(dq, dk, dv, n_head)
+        self.self_attn = MHA(dq, dk, dv, n_head, d_head=d_head)
         self.ffn = base.FFN(dv)
 
         self.residual = residual

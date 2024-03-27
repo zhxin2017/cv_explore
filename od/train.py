@@ -15,8 +15,8 @@ from torchvision import transforms
 device = torch.device("mps")
 # device = torch.device("cpu")
 anchors = torch.tensor(anchor.generate_anchors(), device=device)
-model = detr_model.DETR(d_enc=384, d_coord_emb=32, n_enc_head=6, n_dec_head=6, n_enc_layer=24, n_dec_layer=12,
-                        anchors=anchors, exam_diff=True)
+model = detr_model.DETR(d_enc=320, d_enc_coord_emb=64, d_dec_coord_emb=32, n_enc_head=5, n_dec_head=7,
+                        n_enc_layer=18, n_dec_layer=16, anchors=anchors, exam_diff=True, add_pos_to_src=False)
 model.to(device)
 n_query = model.decoder.n_anchor
 
@@ -27,7 +27,7 @@ dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task=
 
 
 def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4):
-    ds = detr_dataset.OdDataset(dicts, n_query, train=True, sample_num=population, random_shift=True)
+    ds = detr_dataset.OdDataset(dicts, n_query, train=True, sample_num=population, random_shift=False)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=False)
     for i in range(epoch):
         for j, (img, boxes_gt_xyxy, cids_gt, _, img_id) in enumerate(dl):
@@ -45,7 +45,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             gt_pos_mask = gt_pos_mask.view(B, 1, n_query) * 1
 
             t = time.time()
-            _, cols = match.assign_query(boxes_gt_xyxy, boxes_pred_xyxy, cids_gt, cls_logits_pred, gt_pos_mask, anchors=anchors)
+            _, cols = match.assign_query(boxes_gt_xyxy, boxes_pred_xyxy, cids_gt, cls_logits_pred, gt_pos_mask, anchors=None)
             t_match = time.time() - t
             cols = torch.tensor(np.stack(cols), device=device)
 
@@ -119,8 +119,9 @@ if __name__ == '__main__':
         # model.load_state_dict(saved_state)
     for i in range(500):
         batch = latest_version + 1 + i
-        train(1, batch_size=2, population=1000, num_sample=batch, weight_recover=.5, gamma=2)
-        # train(300, batch_size=2, population=2, num_sample=i, weight_recover=0.5, gamma=2)
+        # train(1, batch_size=2, population=1000, num_sample=batch, weight_recover=.5, gamma=2)
+        train(600, batch_size=2, population=2, num_sample=i, weight_recover=.5, gamma=2)
+        # train(2, batch_size=2, population=2, num_sample=i, weight_recover=.5, gamma=2)
         model_path_new = f'{model_dir}/od_detr_{batch}.pt'
         torch.save(model.state_dict(), model_path_new)
         if model_path_old is not None:

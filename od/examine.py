@@ -1,4 +1,5 @@
 from typing import Dict, Iterable, Callable
+from common.config import grid_size_x,grid_size_y
 
 import sys
 
@@ -98,7 +99,7 @@ def examine_attn(img, extractor, n_head, device, q_module_name, k_module_name):
         k = k.view(lk, n_head, -1).transpose(0, 1)
         attn = attention(q, k)
 
-        attns.append(attn[:, obj_idx].view(n_head, 32, 32))
+        attns.append(attn[:, obj_idx].view(n_head, grid_size_y, grid_size_x))
 
     return img[0], anchors, boxes, names, attns, n_head, boxes_pred_xyxy, cls_pred
 
