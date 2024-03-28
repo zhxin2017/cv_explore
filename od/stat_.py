@@ -22,7 +22,7 @@ def cal_cid_occurrence():
     return cid_to_occurrence
 
 print(cal_cid_occurrence())
-def cal_weights():
+def cal_weights(cid_to_occurrence):
 
     min_occr = 5000
     # min_occr = min([occr for occr in cid_to_occurrence.values() if occr > 0])
@@ -37,7 +37,7 @@ def cal_weights():
         cid_weights[cid] = weight
     print(cid_weights)
 
-cal_weights()
+cal_weights(cal_cid_occurrence())
 '''
 imgs = set()
 population = 1000

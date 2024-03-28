@@ -20,9 +20,9 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask, anchors=N
         boxes_gt_ = boxes_gt[i, :n_pos[i]].view(1, n_pos[i], C).expand(N, n_pos[i], C)
         iouloss = torchvision.ops.distance_box_iou_loss(boxes_pred_, boxes_gt_)
 
-        # cls_pred_ = cls_pred[i].view(N, 1, -1).repeat(1, n_pos[i], 1).contiguous().view(N * n_pos[i], -1)
-        # cids_gt_ = cids_gt[i, :n_pos[i]].view(1, n_pos[i]).expand(N, n_pos[i]).contiguous().view(-1)
-        # cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred_, cids_gt_).view(N, n_pos[i])
+        cls_pred_ = cls_pred[i].view(N, 1, -1).repeat(1, n_pos[i], 1).contiguous().view(N * n_pos[i], -1)
+        cids_gt_ = cids_gt[i, :n_pos[i]].view(1, n_pos[i]).expand(N, n_pos[i]).contiguous().view(-1)
+        cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred_, cids_gt_).view(N, n_pos[i])
 
         if anchors is not None:
             anchors_ = anchors.view(N, 1, C).expand(N, n_pos[i], C)
@@ -30,11 +30,9 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask, anchors=N
         else:
             iouloss_anchor = 0
 
-        # total_loss = iouloss * .5 + iouloss_anchor * .5 + cls_loss * .2
-        total_loss = iouloss * .5 + iouloss_anchor * .5
+        total_loss = iouloss * .5 + iouloss_anchor * .5 + cls_loss * .05
         # total_loss[total_loss == torch.nan] = 1e8
-
-        row_, col_ = scipy.optimize.linear_sum_assignment(total_loss.cpu().detach().numpy())
+        row_, col_ = scipy.optimize.linear_sum_assignment(total_loss.detach().cpu().numpy())
         row = list(range(N))
         col = list(range(N))
         col[:n_pos[i]] = row_

@@ -69,6 +69,14 @@ def gen_pos_2d(x, pos='center'):
     return positions
 
 
+def gen_pos_indices(device):
+    row_indices = torch.arange(grid_size_y, device=device).unsqueeze(1).repeat(1, grid_size_x).unsqueeze(-1)
+    col_indices = torch.arange(grid_size_x, device=device).unsqueeze(0).repeat(grid_size_y, 1).unsqueeze(-1)
+    pos_indices = torch.concat((col_indices, row_indices), dim=-1)
+    pos_indices = pos_indices.view(grid_size_y * grid_size_x, 2)
+    return pos_indices
+
+
 class Sinusoidal(nn.Module):
     def __init__(self, d, temperature=0.1, norm=True):
         super().__init__()
@@ -138,10 +146,9 @@ if __name__ == '__main__':
 
     x_middle = ln(anchor_emb[:, 128:192] * .8 + anchor_emb[:, :64] * .2)
     print(x_middle.std())
-    x1, y1, x2, y2 = anchor[0,0] * grid_size_x
+    x1, y1, x2, y2 = anchor[0, 0] * grid_size_x
     print(x1, y1, x2, y2)
     print(x2 * .8 + x1 * .2)
     x_middle_attn = ((x_middle) @ pos_emb_[:, :64].transpose(0, 1)).softmax(dim=-1).view(grid_size_y, grid_size_x)
     axes[6].imshow(x_middle_attn.detach().numpy())
     plt.pause(0)
-

@@ -19,6 +19,8 @@ import random
 import math
 
 
+lx = grid_size_x * grid_size_y
+
 class FeatureExtractor(nn.Module):
     def __init__(self, model: nn.Module, layers: Iterable[str]):
         super().__init__()
@@ -48,7 +50,7 @@ def attention(q, k):
     return attn
 
 
-def examine_attn(img, extractor, n_head, device, q_module_name, k_module_name):
+def examine_attn(img, extractor, n_head, device, q_module_name, k_module_name, anchors):
     img_ = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img)
     img_ = img_.to(device)
     with torch.no_grad():
@@ -61,13 +63,13 @@ def examine_attn(img, extractor, n_head, device, q_module_name, k_module_name):
 
     n_obj = min((cls_pred[0] > 0).sum().item(), 10)
 
-    anchors = []
+    anchors_ = []
     boxes = []
     attns = []
     names = []
 
     if n_obj == 0:
-        return img[0], anchors, boxes, names, attns, n_head, boxes_pred_xyxy, cls_pred
+        return img[0], anchors_, boxes, names, attns, n_head, boxes_pred_xyxy, cls_pred
 
     pos_indices = torch.where(cls_pred[0] > 0)[0].tolist()
     pos_indices = random.sample(pos_indices, n_obj)
@@ -82,26 +84,29 @@ def examine_attn(img, extractor, n_head, device, q_module_name, k_module_name):
         x1, y1, x2, y2 = x1.item(), y1.item(), x2.item(), y2.item()
         boxes.append([x1, y1, x2, y2])
 
-        x1_anchor, y1_anchor, x2_anchor, y2_anchor = extractor.model.decoder.anchors[obj_idx]
+        x1_anchor, y1_anchor, x2_anchor, y2_anchor = anchors[obj_idx]
         x1_anchor = x1_anchor * max(img_size)
         y1_anchor = y1_anchor * max(img_size)
         x2_anchor = x2_anchor * max(img_size)
         y2_anchor = y2_anchor * max(img_size)
-        anchors.append([x1_anchor, y1_anchor, x2_anchor, y2_anchor])
+        anchors_.append([x1_anchor, y1_anchor, x2_anchor, y2_anchor])
 
         q = extractor._features[q_module_name]
         k = extractor._features[k_module_name]
 
         lq = q.shape[1]
         lk = k.shape[1]
-
         q = q.view(lq, n_head, -1).transpose(0, 1)
         k = k.view(lk, n_head, -1).transpose(0, 1)
+
+        # q = q[:, lx:].view(q.shape[1] - lx, n_head, -1).transpose(0, 1)
+        # k = k[:, :lx].view(lx, n_head, -1).transpose(0, 1)
+
         attn = attention(q, k)
 
         attns.append(attn[:, obj_idx].view(n_head, grid_size_y, grid_size_x))
 
-    return img[0], anchors, boxes, names, attns, n_head, boxes_pred_xyxy, cls_pred
+    return img[0], anchors_, boxes, names, attns, n_head, boxes_pred_xyxy, cls_pred
 
 
 def draw_attn(img, anchors, boxes, names, attns, n_head):

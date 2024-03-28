@@ -51,7 +51,7 @@ class MHA(nn.Module):
 
 
 class AttnLayer(nn.Module):
-    def __init__(self, dq, dk, dv, n_head, residual=True, d_head=None):
+    def __init__(self, dq, dk, dv, n_head):
         super().__init__()
         self.dq = dq
         self.dv = dv
@@ -61,27 +61,14 @@ class AttnLayer(nn.Module):
 
         self.out_ln = nn.LayerNorm(dv)
 
-        self.self_attn = MHA(dq, dk, dv, n_head, d_head=d_head)
+        self.self_attn = MHA(dq, dk, dv, n_head)
         self.ffn = base.FFN(dv)
 
-        self.residual = residual
-
-        if dq != dv and residual:
-            self.q_residual_proj = nn.Linear(dq, dv, bias=False)
-
-    def forward(self, q, k, v):
+    def forward(self, q, k, v, q_res=0):
         q = self.q_ln(q)
         k = self.k_ln(k)
         v = self.v_ln(v)
 
-        if self.residual:
-            if self.dq != self.dv:
-                q_residual = self.q_residual_proj(q)
-            else:
-                q_residual = q
-        else:
-            q_residual = 0
-
-        x = q_residual + self.self_attn(q, k, v)
+        x = q_res + self.self_attn(q, k, v)
         x = x + self.ffn(self.out_ln(x))
         return x
