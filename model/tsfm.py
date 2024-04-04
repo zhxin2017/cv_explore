@@ -1,7 +1,7 @@
 from torch import nn
 import torch
 import torch.nn.functional as F
-from model import base
+from model import base, pe
 
 
 def attention(q, k):
@@ -12,16 +12,16 @@ def attention(q, k):
 
 
 class MHA(nn.Module):
-    def __init__(self, dq, dk, dv, n_head, project_v=True, d_head=None):
+    def __init__(self, dq, dk, dv, n_head, mask=None, d_match=None, project_v=True):
         super().__init__()
         self.n_head = n_head
-        if d_head is not None:
-            d_match = n_head * d_head
-        else:
+        if d_match is None:
             d_match = max(dq, dk, dv)
 
         self.q_proj = nn.Linear(dq, d_match, bias=False)
         self.k_proj = nn.Linear(dk, d_match, bias=False)
+        self.mask = mask  # lq * lv
+
         self.project_v = project_v
         if project_v:
             self.v_proj = nn.Linear(dv, d_match, bias=False)
@@ -36,6 +36,8 @@ class MHA(nn.Module):
         q = q.view(b, lq, self.n_head, -1).transpose(1, 2)
         k = k.view(b, lv, self.n_head, -1).transpose(1, 2)
         attn = attention(q, k)
+        if self.mask is not None:
+            attn = attn * self.mask.view(1, 1, lq, lv)
 
         if self.project_v:
             v = self.v_proj(v)
@@ -51,7 +53,7 @@ class MHA(nn.Module):
 
 
 class AttnLayer(nn.Module):
-    def __init__(self, dq, dk, dv, n_head):
+    def __init__(self, dq, dk, dv, n_head, lp=0, mask=None):
         super().__init__()
         self.dq = dq
         self.dv = dv
@@ -59,16 +61,27 @@ class AttnLayer(nn.Module):
         self.k_ln = nn.LayerNorm(dk)
         self.v_ln = nn.LayerNorm(dv)
 
-        self.out_ln = nn.LayerNorm(dv)
+        self.lp = lp
+        if lp > 0:
+            self.plugin_k_emb_m = pe.Embedding1D(lp, dq)
+            self.plugin_v_emb_m = pe.Embedding1D(lp, dq)
+            self.plugin_attn = MHA(dq, dq, dq, n_head)
 
-        self.self_attn = MHA(dq, dk, dv, n_head)
+        self.self_attn = MHA(dq, dk, dv, n_head, mask)
+
+        self.out_ln = nn.LayerNorm(dv)
         self.ffn = base.FFN(dv)
 
     def forward(self, q, k, v, q_res=0):
+        if self.lp > 0:
+            q = self.q_ln(q)
+            plugin_k = self.q_ln(self.plugin_k_emb_m(q))
+            plugin_v = self.q_ln(self.plugin_v_emb_m(q))
+            q = q + self.plugin_attn(q, plugin_k, plugin_v)
         q = self.q_ln(q)
         k = self.k_ln(k)
         v = self.v_ln(v)
 
-        x = q_res + self.self_attn(q, k, v)
+        x = q_res[..., :self.dv] + self.self_attn(q, k, v)
         x = x + self.ffn(self.out_ln(x))
         return x
