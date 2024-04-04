@@ -1,6 +1,5 @@
 import torch
 import torch.nn.functional as F
-from od.config import cid_to_occurrence
 
 
 def focal_loss(logits, labels, alpha=1, gamma=4):

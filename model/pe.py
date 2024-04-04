@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from common.config import grid_size_x, grid_size_y
+from common.config import grid_size_x, grid_size_y, num_grid
 
 
 class Embedding2D(nn.Module):
@@ -73,7 +73,7 @@ def gen_pos_indices(device):
     row_indices = torch.arange(grid_size_y, device=device).unsqueeze(1).repeat(1, grid_size_x).unsqueeze(-1)
     col_indices = torch.arange(grid_size_x, device=device).unsqueeze(0).repeat(grid_size_y, 1).unsqueeze(-1)
     pos_indices = torch.concat((col_indices, row_indices), dim=-1)
-    pos_indices = pos_indices.view(grid_size_y * grid_size_x, 2)
+    pos_indices = pos_indices.view(num_grid, 2)
     return pos_indices
 
 
@@ -124,8 +124,8 @@ if __name__ == '__main__':
 
     pos_emb = Sinusoidal(64)
     x = torch.rand([1, grid_size_y, grid_size_x, 2])
-    coord = gen_pos_2d(x).view(1, grid_size_x * grid_size_y, 2)
-    pos_emb_ = pos_emb(coord).view(grid_size_x * grid_size_y, 128)
+    coord = gen_pos_2d(x).view(1, num_grid, 2)
+    pos_emb_ = pos_emb(coord).view(num_grid, 128)
 
     anchor = torch.tensor(anchor).view(1, 1, 4)
     anchor_emb = pos_emb(anchor).view(1, 256)

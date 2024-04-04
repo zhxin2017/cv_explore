@@ -21,7 +21,7 @@ def cal_cid_occurrence():
             cid_to_occurrence[ind] = cid_to_occurrence[ind] + 1
     return cid_to_occurrence
 
-print(cal_cid_occurrence())
+# print(cal_cid_occurrence())
 def cal_weights(cid_to_occurrence):
 
     min_occr = 5000
@@ -37,7 +37,7 @@ def cal_weights(cid_to_occurrence):
         cid_weights[cid] = weight
     print(cid_weights)
 
-cal_weights(cal_cid_occurrence())
+# cal_weights(cal_cid_occurrence())
 '''
 imgs = set()
 population = 1000
@@ -88,3 +88,17 @@ for i in range(500):
 # b = torch.arange(24, 36).view(12, 1)
 # c = torch.concat((a, b), dim=-1)
 # print(c)
+
+dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+ds = detr_dataset.OdDataset(dicts, n_query, cid_only=True)
+max_num = 0
+for img, bboxes_padded, indices_padded, num_box, img_id in ds:
+    cid_to_count = {}
+    for i in range(num_box):
+        cid = indices_padded[i].item()
+        cid_to_count.setdefault(cid, []).append(cid)
+        count = len(cid_to_count[cid])
+        if count > max_num:
+            print(count)
+            print(img_id)
+            max_num = count
