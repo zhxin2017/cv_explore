@@ -9,11 +9,12 @@ class SSL(nn.Module):
     def __init__(self, d_cont, d_coord_emb, d_head, n_enc_layer):
         super().__init__()
         self.encoder = enc.Encoder(n_enc_layer, d_cont, d_head, d_coord_emb, pretrain=True)
+        self.ln = nn.LayerNorm(d_cont)
         self.reg = base.MLP(d_cont, d_cont * 4, 3 * patch_size ** 2, 2)
 
     def forward(self, x):
         x, _ = self.encoder(x)
-        pred = F.sigmoid(self.reg(x[:, num_grid + 1:]))
+        pred = F.sigmoid(self.reg(self.ln(x[:, num_grid + 1:])))
         pred = pred.view(x.shape[0], num_grid - 1, patch_size, patch_size, 3)
         return pred
 

@@ -1,11 +1,12 @@
 import os
 import sys
+
 sys.path.append('..')
 import torch
 from torch import optim
 from od import anno, detr_dataset, detr_model, match, eval, anchor
 from common.config import train_annotation_file, train_img_od_dict_file, img_size, \
-    train_anchor_batch_size, model_save_dir, device_type, model_save_stride
+    train_anchor_bsz, model_save_dir, device_type, model_save_stride
 from od.config import loss_weights
 import focalloss
 import time
@@ -15,11 +16,12 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 device = torch.device(device_type)
-anchors = torch.tensor(anchor.generate_anchors(stride_ratio=.5), device=device)
+
 model = detr_model.DETR(d_cont=384, d_head=64, d_enc_coord_emb=64, d_dec_coord_emb=32, d_assist=64,
-                        n_enc_layer=20, n_dec_layer=8, anchors=anchors, exam_diff=True)
+                        n_enc_layer=20, n_dec_layer=8, exam_diff=True)
 model.to(device)
-n_query = len(anchors)
+
+n_query_ = 1300
 
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
 
@@ -27,10 +29,14 @@ dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task=
 
 
 def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4):
-    ds = detr_dataset.OdDataset(dicts, n_query, train=True, sample_num=population, random_shift=False)
+    ds = detr_dataset.OdDataset(dicts, n_query_, train=True, sample_num=population, random_shift=False)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=False)
     for i in range(epoch):
         for j, (img, boxes_gt_xyxy, cids_gt, _, img_id) in enumerate(dl):
+            anchors = torch.tensor(anchor.generate_anchors2(), device=device)
+            n_query = anchors.shape[0]
+            boxes_gt_xyxy = boxes_gt_xyxy[:, :n_query]
+            cids_gt = cids_gt[:, :n_query]
             img = img.to(device)
             cids_gt = cids_gt.to(torch.long)
             cids_gt = cids_gt.to(device)
@@ -38,14 +44,14 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             img = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img)
 
             B = img.shape[0]
-
-            boxes_pred_xyxy, cls_logits_pred, enc_diff, logits_diff = model(img)
+            boxes_pred_xyxy, cls_logits_pred, enc_diff, logits_diff = model(img, anchors)
 
             gt_pos_mask = (cids_gt > 0)
             gt_pos_mask = gt_pos_mask.view(B, 1, n_query) * 1
 
             t = time.time()
-            _, cols = match.assign_query(boxes_gt_xyxy, boxes_pred_xyxy, cids_gt, cls_logits_pred, gt_pos_mask, anchors=anchors)
+            _, cols = match.assign_query(boxes_gt_xyxy, boxes_pred_xyxy, cids_gt, cls_logits_pred, gt_pos_mask,
+                                         anchors=anchors)
             t_match = time.time() - t
             cols = torch.tensor(np.stack(cols), device=device)
 
@@ -93,7 +99,8 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
                   f'cl {cls_loss.detach().item() * 1000:.3f}|'
                   f'bl {box_loss.detach().item():.3f}|'
                   f'ac {accu:.3f}|rc {recall:.3f}: {n_tp}/{n_pos}|'
-                  f'dif {enc_diff:.3f} {logits_diff:.3f}|'
+                  f'nanc {n_query}|'
+                  # f'dif {enc_diff:.3f} {logits_diff:.3f}|'
                   f'tmch {t_match:.3f}|tbp {t_bp:.3f}|'
                   f'img {" ".join(img_id)}')
 
@@ -101,29 +108,33 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
 if __name__ == '__main__':
     model_files = os.listdir(model_save_dir)
     od_anchor_model_files = [f for f in model_files if f.endswith('.pt') and f.startswith('od_detr_anchor')]
-    uni_enc_file = f'{model_save_dir}/uni_enc'
     if len(od_anchor_model_files) == 0:
         model_path_old = None
         latest_version = 0
-        enc_model_files = [f for f in model_files if f.endswith('.pt') and f.startswith('uni_enc')]
-        versions = [int(f.split('.')[0].split('_')[-1]) for f in enc_model_files]
-        enc_latest_version = max(versions)
-        enc_model_path = f'{model_save_dir}/uni_enc_{enc_latest_version}.pt'
-        model.encoder.load_state_dict(torch.load(enc_model_path, map_location=device))
+
     else:
         versions = [int(f.split('.')[0].split('_')[-1]) for f in od_anchor_model_files]
         latest_version = max(versions)
         model_path_old = f'{model_save_dir}/od_detr_anchor_{latest_version}.pt'
         saved_state = torch.load(model_path_old, map_location=device)
-        model.load_state_dict(saved_state)
+        # model.load_state_dict(saved_state)
+        state = model.state_dict()
+        for k in state.keys():
+            if k.startswith('decoder.anchor_shift_reg'):
+                state[k] = saved_state[k.replace('decoder.anchor_shift_reg', 'decoder.anchor_shift_regs.0')]
+            else:
+                state[k] = saved_state[k]
+        model.load_state_dict(state)
+
+    # model.encoder.load_state_dict(torch.load(f'{model_save_dir}/ssl_enc_410.pt'))
 
     for i in range(500):
         n_smp = latest_version + 1 + i
-        # ts = time.time()
-        # train(1, batch_size=train_anchor_batch_size, population=1000, num_sample=n_smp, weight_recover=0, gamma=4)
-        # te = time.time()
-        # print(f'----------------------used {te-ts:.3f} secs---------------------------')
-        train(1000, batch_size=2, population=2, num_sample=i, weight_recover=0, gamma=4)
+        ts = time.time()
+        train(1, batch_size=train_anchor_bsz, population=1000, num_sample=n_smp, weight_recover=0, gamma=4)
+        te = time.time()
+        print(f'----------------------used {te - ts:.3f} secs---------------------------')
+        # train(1000, batch_size=2, population=2, num_sample=i, weight_recover=0, gamma=4)
         # train(2, batch_size=2, population=2, num_sample=i, weight_recover=.5, gamma=2)
         if n_smp % model_save_stride == 0:
             model_path_new = f'{model_save_dir}/od_detr_anchor_{n_smp}.pt'

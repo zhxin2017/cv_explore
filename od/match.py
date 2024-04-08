@@ -28,7 +28,7 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask, anchors=N
             else:
                 iouloss_anchor = 0
 
-            total_loss = iouloss + iouloss_anchor + cls_loss * .1
+            total_loss = iouloss + iouloss_anchor + cls_loss
         # total_loss[total_loss == torch.nan] = 1e8
         row_, col_ = scipy.optimize.linear_sum_assignment(total_loss.detach().cpu().numpy())
         col_ = col_.tolist()

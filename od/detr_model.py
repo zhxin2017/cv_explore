@@ -7,20 +7,17 @@ from od import box, anchor
 
 
 class DetrDecoder(nn.Module):
-    def __init__(self, n_dec_layer, d_cont, d_head, d_src_coord_emb, d_tgt_coord_emb, d_assist, anchors):
+    def __init__(self, n_dec_layer, d_cont, d_head, d_src_coord_emb, d_tgt_coord_emb, d_assist):
         super().__init__()
         self.n_dec_layer = n_dec_layer
         self.d_src_coord_emb = d_src_coord_emb
         self.dec_pos_emb_m = pe.Sinusoidal(d_tgt_coord_emb)
 
-        self.anchors = anchors
-
-        self.n_anchor = len(self.anchors)
-
         self.ca_layers = nn.ModuleList()
         self.sa_layers = nn.ModuleList()
-        self.anchor_shift_regs = nn.ModuleList()
         self.assist_emb_ms = nn.ModuleList()
+
+        self.anchor_shift_reg = base.MLP(d_cont, d_cont * 2, 4, 2)
 
         self.d_src = d_cont
         dq_with_assist = d_cont + 4 * d_tgt_coord_emb + d_assist
@@ -38,31 +35,33 @@ class DetrDecoder(nn.Module):
             sa_layer = tsfm.AttnLayer(dq_with_pos, dq_with_pos, d_cont, n_head_with_pos)
             self.sa_layers.append(sa_layer)
 
-            anchor_shift_reg = base.MLP(d_cont, d_cont * 2, 4, 2)
-            self.anchor_shift_regs.append(anchor_shift_reg)
 
         self.src_ln = nn.LayerNorm(d_cont)
         self.cls_reg = nn.Linear(d_cont, n_cls, bias=False)
 
-    def forward(self, src, src_pos_emb):
+    def forward(self, src, src_pos_emb, anchors):
         B = src.shape[0]
-        anchors = self.anchors.unsqueeze(0).repeat(B, 1, 1)
-        anchors_emb = self.dec_pos_emb_m(anchors).view(B, self.n_anchor, -1)
+        n_anchor = anchors.shape[0]
+        anchors = anchors.unsqueeze(0).repeat(B, 1, 1)
+        anchors_emb = self.dec_pos_emb_m(anchors).view(B, n_anchor, -1)
         src_with_pos = torch.concat([self.src_ln(src), src_pos_emb], dim=-1)
 
-        q = torch.zeros([B, self.n_anchor, self.d_src], device=src.device)
+        q = torch.zeros([B, n_anchor, self.d_src], device=src.device)
         for i in range(self.n_dec_layer):
-            assist_emb = self.assist_emb_ms[i](src).repeat(1, self.n_anchor, 1)
+            assist_emb = self.assist_emb_ms[i](src).repeat(1, n_anchor, 1)
 
             q_with_assist = torch.concat([self.src_ln(q), assist_emb, anchors_emb], dim=-1)
             q = self.ca_layers[i](q_with_assist, src_with_pos, src, q_with_assist)
 
+            if i == 1:
+                anchor_shift_limit = 1 / 8
+                anchor_shift = F.tanh(self.anchor_shift_reg(self.src_ln(q))) * anchor_shift_limit
+
+                anchors = anchors + anchor_shift
+                anchors_emb = self.dec_pos_emb_m(anchors).view(B, n_anchor, -1)
+
             q_with_pos = torch.concat([self.src_ln(q), anchors_emb], dim=-1)
             q = self.sa_layers[i](q_with_pos, q_with_pos, q, q_with_pos)
-
-            anchor_shift_limit = 1 / min(anchor.anchor_max_size, 2 * (i + 2))
-            anchors = anchors + F.tanh(self.anchor_shift_regs[i](self.src_ln(q))) * anchor_shift_limit
-            anchors_emb = self.dec_pos_emb_m(anchors).view(B, self.n_anchor, -1)
 
         cls_logits = self.cls_reg(self.src_ln(q))
         return anchors, cls_logits
@@ -70,18 +69,18 @@ class DetrDecoder(nn.Module):
 
 class DETR(nn.Module):
 
-    def __init__(self, d_cont, d_head, d_enc_coord_emb, d_dec_coord_emb, d_assist, n_enc_layer, n_dec_layer, anchors,
+    def __init__(self, d_cont, d_head, d_enc_coord_emb, d_dec_coord_emb, d_assist, n_enc_layer, n_dec_layer,
                  exam_diff=True):
         super().__init__()
         self.encoder = enc.Encoder(n_enc_layer, d_cont, d_head, d_enc_coord_emb)
-        self.decoder = DetrDecoder(n_dec_layer, d_cont, d_head, d_enc_coord_emb, d_dec_coord_emb, d_assist, anchors)
+        self.decoder = DetrDecoder(n_dec_layer, d_cont, d_head, d_enc_coord_emb, d_dec_coord_emb, d_assist)
         self.exam_diff = exam_diff
 
-    def forward(self, x):
+    def forward(self, x, anchors):
 
         src, src_pos_emb = self.encoder(x)
 
-        boxes, cls_logits = self.decoder(src, src_pos_emb)
+        boxes, cls_logits = self.decoder(src, src_pos_emb, anchors)
 
         if self.exam_diff and x.shape[0] > 1:
             enc_diff = (src[0] - src[1]).abs().mean().item()

@@ -7,12 +7,6 @@ from common import image
 import random
 from matplotlib import pyplot as plt
 
-img_fns = os.listdir(val_img_dir)
-
-img_fn = img_fns[20]
-img_fp = os.path.join(val_img_dir, img_fn)
-img = image.read_img(img_fp, channel_first=False)
-
 
 def crop_img(img, crop_top_left=None):
     h, w, c = img.shape

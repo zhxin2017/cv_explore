@@ -27,10 +27,11 @@ num_grid = grid_size_y * grid_size_x
 # train
 # model_save_dir = '/content/drive/MyDrive/od_model'
 model_save_dir = '/Users/zx/Documents/ml/restart/resources'
-model_save_stride = 10
+model_save_stride = 1
 device_type = 'mps'
 # device_type = 'cpu'
 # device_type = 'cuda'
 
-train_base_batch_size = 6
-train_anchor_batch_size = 2
+train_base_bsz = 2
+train_ssl_bsz = 1
+train_anchor_bsz = 2

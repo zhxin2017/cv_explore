@@ -1,11 +1,10 @@
 import os
 import sys
-
 sys.path.append('..')
 import torch
 from torch import optim
 from ssl_ import ssl_model, ssl_dataset
-from common.config import model_save_dir, device_type, model_save_stride, patch_size, num_grid
+from common.config import model_save_dir, device_type, model_save_stride, patch_size, num_grid, train_ssl_bsz
 from common import image
 import time
 from torch import nn
@@ -59,14 +58,19 @@ if __name__ == '__main__':
         model_path_old = f'{model_save_dir}/ssl_{latest_version}.pt'
         saved_state = torch.load(model_path_old, map_location=device)
         model.load_state_dict(saved_state)
+        # state = model.state_dict()
+        # for k in state.keys():
+        #     if k in saved_state:
+        #         state[k] = saved_state[k]
+        # model.load_state_dict(state)
 
     for i in range(500):
         n_smp = latest_version + 1 + i
-        # ts = time.time()
-        # train(1, batch_size=train_anchor_batch_size, population=1000, num_sample=n_smp, weight_recover=0, gamma=4)
-        # te = time.time()
-        # print(f'----------------------used {te-ts:.3f} secs---------------------------')
-        train(1000, batch_size=2, population=2, num_sample=i)
+        ts = time.time()
+        train(1, batch_size=train_ssl_bsz, population=1000, num_sample=n_smp)
+        te = time.time()
+        print(f'----------------------used {te - ts:.3f} secs---------------------------')
+        # train(1000, batch_size=1, population=2, num_sample=i)
         # train(2, batch_size=2, population=2, num_sample=i, weight_recover=.5, gamma=2)
         if n_smp % model_save_stride == 0:
             model_path_new = f'{model_save_dir}/ssl_{n_smp}.pt'
