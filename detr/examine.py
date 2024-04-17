@@ -9,7 +9,7 @@ from torch import nn, Tensor
 
 from matplotlib import pyplot as plt
 from common.config import img_size
-from od.config import cid_to_name
+from detr.config import cid_to_name
 from torchvision import transforms
 import random
 

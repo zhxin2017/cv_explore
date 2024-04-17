@@ -6,7 +6,7 @@ class_file = f'{coco_dir}/ms_coco_classnames.txt'
 train_img_dir = f'{coco_dir}/train2017'
 val_img_dir = f'{coco_dir}/val2017'
 
-anno_dir = f'{coco_dir}/annotations/'
+anno_dir = f'{coco_dir}/annotations'
 train_anno_dir = f'{anno_dir}/train_annotations'
 val_anno_dir = f'{anno_dir}/val_annotations'
 

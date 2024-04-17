@@ -1,4 +1,4 @@
-from od import od_image, anno, box
+from detr import od_image, anno, box
 from common import image
 import torch
 import random
@@ -78,7 +78,7 @@ class OdDataset(Dataset):
 if __name__ == '__main__':
     from common.config import val_annotation_file, val_img_od_dict_file
 
-    dicts = anno.build_img_dict(val_annotation_file, val_img_od_dict_file, task='od')
+    dicts = anno.build_img_dict(val_annotation_file, val_img_od_dict_file, task='detr')
     ds = OdDataset(dicts, train=False, sample_num=10)
     for i in ds:
         print(i)

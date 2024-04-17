@@ -1,10 +1,10 @@
-from od import anno, detr_dataset
+from detr import anno, detr_dataset
 import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from common.config import train_annotation_file, train_img_od_dict_file
-from od.config import cid_to_occurrence, n_cls
-from od import anchor
+from detr.config import cid_to_occurrence, n_cls
+from detr import anchor
 
 n_query = len(anchor.generate_anchors())
 
@@ -12,7 +12,7 @@ n_query = len(anchor.generate_anchors())
 
 def cal_cid_occurrence():
     cid_to_occurrence = {i: 0 for i in range(n_cls)}
-    dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+    dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='detr')
     ds = detr_dataset.OdDataset(dicts, n_query, cid_only=True)
     for img, bboxes_padded, indices_padded, num_box, img_id in tqdm(ds):
         cid_to_occurrence[0] = cid_to_occurrence[0] + n_query - num_box
@@ -41,7 +41,7 @@ def cal_weights(cid_to_occurrence):
 '''
 imgs = set()
 population = 1000
-dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='detr')
 for i in range(500):
     print(f'{i} / 500')
     ds = detr_dataset.OdDataset(dicts, train=True, sample_num=population, random_shift=False, cid_only=True)
@@ -51,7 +51,7 @@ for i in range(500):
         imgs.update(set(img_id))
     print(len(imgs)) # 107145
 '''
-# dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+# dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='detr')
 # ds = detr_dataset.OdDataset(dicts, train=True, random_shift=False, cid_only=True)
 # print(len(ds))
 
@@ -89,7 +89,7 @@ for i in range(500):
 # c = torch.concat((a, b), dim=-1)
 # print(c)
 
-dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='detr')
 ds = detr_dataset.OdDataset(dicts, n_query, cid_only=True)
 max_num = 0
 for img, bboxes_padded, indices_padded, num_box, img_id in ds:

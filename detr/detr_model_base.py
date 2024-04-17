@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from model import base, pe, tsfm, enc
-from od.config import n_cls
+from detr.config import n_cls
 from common.config import img_size
 
 

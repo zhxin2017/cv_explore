@@ -101,7 +101,7 @@ class Sinusoidal(nn.Module):
 
 
 if __name__ == '__main__':
-    from od import anchor
+    from detr import anchor
     import random
     from matplotlib import pyplot as plt
 

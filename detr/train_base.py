@@ -3,10 +3,10 @@ import torch
 from torch import optim
 import sys
 sys.path.append('..')
-from od import anno, detr_dataset, detr_model_base, match, eval
+from detr import anno, detr_dataset, detr_model_base, match, eval
 from common.config import train_annotation_file, train_img_od_dict_file, img_size, \
     train_base_bsz, model_save_dir, model_save_stride, device_type
-from od.config import loss_weights, n_query
+from detr.config import loss_weights, n_query
 import focalloss
 import time
 import numpy as np
@@ -21,7 +21,7 @@ model.to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
 
-dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
+dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='detr')
 
 
 def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4):

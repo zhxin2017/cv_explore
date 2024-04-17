@@ -1,6 +1,6 @@
 import torch
 
-from od import od_image
+from detr import od_image
 from common import image, config
 import torchvision
 
