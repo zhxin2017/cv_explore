@@ -23,10 +23,12 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask, anchors=N
             cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred_, cids_gt_).view(N, n_pos[i])
 
             if anchors is not None:
-                anchors_ = anchors.view(N, 1, C).expand(N, n_pos[i], C)
+                anchors_ = anchors.view(N // 6, 1, C).repeat(6, n_pos[i], 1)
                 iouloss_anchor = torchvision.ops.distance_box_iou_loss(anchors_, boxes_gt_)
             else:
                 iouloss_anchor = 0
+
+            # print(iouloss.mean(), cls_loss.mean())
 
             total_loss = iouloss + iouloss_anchor + cls_loss
         # total_loss[total_loss == torch.nan] = 1e8

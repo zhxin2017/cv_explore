@@ -52,6 +52,7 @@ def examine_attn(img, extractor, n_head, device,
     with torch.no_grad():
         if anchors is not None:
             boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_, anchors)
+            anchors_expanded = anchors.view(anchors.shape[0], 1, -1).repeat(1, 6, 1).reshape(anchors.shape[0] * 6, -1)
         else:
             boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_)
     boxes_pred_xyxy = boxes_pred_xyxy * max(img_size)
@@ -86,11 +87,14 @@ def examine_attn(img, extractor, n_head, device,
         x1, y1, x2, y2 = boxes_pred_xyxy[0, obj_idx]
         x1, y1, x2, y2 = x1.item(), y1.item(), x2.item(), y2.item()
         boxes.append([x1, y1, x2, y2])
+
         q1 = extractor._features[q1_module_name]
         k1 = extractor._features[k1_module_name]
 
         lq = q1.shape[1]
         lk = k1.shape[1]
+
+        print(q1.shape)
 
         q1 = q1.view(lq, n_head, -1).transpose(0, 1)
         k1 = k1.view(lk, n_head, -1).transpose(0, 1)
@@ -115,14 +119,14 @@ def examine_attn(img, extractor, n_head, device,
             # print(anchors[obj_idx])
             # print(anchor_shift + anchors[obj_idx])
             # print((anchor_shift + anchors[obj_idx]) * max(img_size))
-            x1_anchor, y1_anchor, x2_anchor, y2_anchor = anchors[obj_idx]
+            x1_anchor, y1_anchor, x2_anchor, y2_anchor = anchors_expanded[obj_idx]
             x1_anchor = (x1_anchor * max(img_size)).item()
             y1_anchor = (y1_anchor * max(img_size)).item()
             x2_anchor = (x2_anchor * max(img_size)).item()
             y2_anchor = (y2_anchor * max(img_size)).item()
             anchors_.append([x1_anchor, y1_anchor, x2_anchor, y2_anchor])
 
-            anchor_shift = torch.tanh(extractor._features['decoder.anchor_shift_reg'])[0, obj_idx] / 8
+            anchor_shift = torch.tanh(extractor._features['decoder.anchor_shift_reg'])[0, obj_idx] / 3
             x1_new = (anchor_shift[0] * max(img_size) + x1_anchor).item()
             y1_new = (anchor_shift[1] * max(img_size) + y1_anchor).item()
             x2_new = (anchor_shift[2] * max(img_size) + x2_anchor).item()

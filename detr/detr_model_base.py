@@ -21,8 +21,9 @@ class DetrDecoder(nn.Module):
             dec_ca_layer = tsfm.AttnLayer(dq_dec, dk_dec, dv_dec, n_head)
             dec_sa_layer = tsfm.AttnLayer(dq_dec, dk_dec, dv_dec, n_head)
             self.dec_ca_layers.append(dec_ca_layer)
-            self.dec_sa_layers.append(dec_sa_layer)
-
+            if i < n_dec_layer - 1:
+                self.dec_sa_layers.append(dec_sa_layer)
+        self.n_dec_layer = n_dec_layer
         # regression
         self.ln = nn.LayerNorm(dv_dec)
         self.box_reg = base.MLP(dv_dec, dv_dec * 2, 4, 2)
@@ -33,9 +34,10 @@ class DetrDecoder(nn.Module):
         query_indices = torch.arange(self.n_query, device=src.device).view(1, self.n_query).repeat(src.shape[0], 1)
         q_dec = self.query_emb_m(query_indices)
 
-        for dec_ca, dec_sa in zip(self.dec_ca_layers, self.dec_sa_layers):
-            q_dec = dec_ca(q_dec, src_with_pos, src_with_pos, q_dec)
-            q_dec = dec_sa(q_dec, q_dec, q_dec, q_dec)
+        for i in range(self.n_dec_layer):
+            q_dec = self.dec_ca_layers[i](q_dec, src_with_pos, src_with_pos, q_dec)
+            if i < self.n_dec_layer - 1:
+                q_dec = self.dec_sa_layers[i](q_dec, q_dec, q_dec, q_dec)
 
         boxes = F.sigmoid(self.box_reg(self.ln(q_dec)))
         cls_logits = self.cls_reg(self.ln(q_dec))
