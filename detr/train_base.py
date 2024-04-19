@@ -42,7 +42,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             gt_pos_mask = gt_pos_mask.view(B, 1, n_query) * 1
 
             t = time.time()
-            _, cols = match.assign_query(boxes_gt_xyxy, boxes_pred_xyxy, cids_gt, cls_logits_pred, gt_pos_mask, anchors=None)
+            rows, cols = match.assign_query(boxes_gt_xyxy, boxes_pred_xyxy, cids_gt, cls_logits_pred, gt_pos_mask, anchors=None)
             t_match = time.time() - t
             cols = torch.tensor(np.stack(cols), device=device)
 

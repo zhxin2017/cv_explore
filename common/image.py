@@ -19,6 +19,18 @@ def pad(wider_len, shorter_len, buffer_ratio, out_ratio):
     return wider_len_new, shorter_len_new, buffer_wider, buffer_shorter
 
 
+def crop_img(img, crop_top_left=None):
+    h, w, c = img.shape
+    min_size = min(h, w)
+    if crop_top_left is None:
+        crop_top_left = random.choice([True, False])
+    if crop_top_left:
+        cropped = img[:min_size, :min_size]
+    else:
+        cropped = img[-min_size:, -min_size:]
+    return cropped
+
+
 def pad_img(img, random_offset=True, buffer_ratio=0, content='random', out_ratio=1.0, channel_first=False):
     if channel_first:
         c, h, w = img.shape

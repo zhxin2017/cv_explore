@@ -2,8 +2,8 @@ import os
 import json
 
 
-def build_img_dict(annotation_file, img_dict_file, task='detr'):
-    assert task in ['detr', 'seg']
+def build_img_dict(annotation_file, img_dict_file, task='od'):
+    assert task in ['od', 'seg']
 
     if os.path.exists(img_dict_file):
         with open(img_dict_file, 'r') as f:

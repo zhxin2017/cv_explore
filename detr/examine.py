@@ -1,5 +1,5 @@
 from typing import Dict, Iterable, Callable
-from common.config import grid_size_x,grid_size_y,patch_size
+from common.config import patch_size
 
 import sys
 
@@ -51,10 +51,11 @@ def examine_attn(img, extractor, n_head, device,
     img_ = img_.to(device)
     with torch.no_grad():
         if anchors is not None:
-            boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_, anchors)
+            boxes_pred_xyxy, cls_logits_pred, _, _  = extractor.model(img_, anchors)
             anchors_expanded = anchors.view(anchors.shape[0], 1, -1).repeat(1, 6, 1).reshape(anchors.shape[0] * 6, -1)
         else:
-            boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_)
+            boxes_pred_xyxy, cls_logits_pred, _, _, _, _ = extractor.model(img_, anchors)
+            # boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_)
     boxes_pred_xyxy = boxes_pred_xyxy * max(img_size)
     cls_pred_sm = cls_logits_pred.softmax(-1)
     cls_pred = cls_pred_sm.argmax(-1)
@@ -62,8 +63,11 @@ def examine_attn(img, extractor, n_head, device,
     # cls_pred = (cls_pred + 1) * (torch.max(cls_pred_sm[..., 1:], dim=-1)[0] > .35)
 
     img = torch.permute(img, [0, 2, 3, 1])
+    H, W = img.shape[1], img.shape[2]
+    grid_size_y = H // patch_size
+    grid_size_x = W // patch_size
 
-    n_obj = min((cls_pred[0] > 0).sum().item(), 100)
+    n_obj = min((cls_pred[0] > 0).sum().item(), 20)
 
     anchors_ = []
     anchors_new = []
@@ -94,8 +98,6 @@ def examine_attn(img, extractor, n_head, device,
         lq = q1.shape[1]
         lk = k1.shape[1]
 
-        print(q1.shape)
-
         q1 = q1.view(lq, n_head, -1).transpose(0, 1)
         k1 = k1.view(lk, n_head, -1).transpose(0, 1)
 
@@ -108,6 +110,7 @@ def examine_attn(img, extractor, n_head, device,
 
         attn1 = attention(q1, k1)
         attn2 = attention(q2, k2)
+
 
         attns1.append(attn1[:, obj_idx].view(n_head, grid_size_y, grid_size_x))
         attns2.append(attn2[:, obj_idx].view(n_head, grid_size_y, grid_size_x))
@@ -143,6 +146,10 @@ def draw_attn(img, anchors, anchors_new, boxes, names, attns, n_head):
         return
 
     fig, axes = plt.subplots(n_obj, n_head + 2, figsize=((n_head + 2) * 5, n_obj * 5))
+
+    H, W = img.shape[0], img.shape[1]
+    grid_size_y = H // patch_size
+    grid_size_x = W // patch_size
 
     for i in range(n_obj):
 

@@ -9,7 +9,7 @@ def attention(q, k, mask=None):
     k = torch.transpose(k, -2, -1)
     attn = q @ k / d ** 0.5
     if mask is not None:
-        attn = attn.masked_fill(mask.view(1, 1, q.shape[-2], k.shape[-1]) == 0, float('-inf'))
+        attn = attn.masked_fill(mask.view(-1, 1, q.shape[-2], k.shape[-1]) == 0, float('-inf'))
 
     attn = F.softmax(attn, dim=-1)
     return attn

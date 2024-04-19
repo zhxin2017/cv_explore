@@ -8,18 +8,6 @@ import random
 from matplotlib import pyplot as plt
 
 
-def crop_img(img, crop_top_left=None):
-    h, w, c = img.shape
-    min_size = min(h, w)
-    if crop_top_left is None:
-        crop_top_left = random.choice([True, False])
-    if crop_top_left:
-        cropped = img[:min_size, :min_size]
-    else:
-        cropped = img[-min_size:, -min_size:]
-    return cropped
-
-
 class SslDataset(Dataset):
     def __init__(self, train=True, sample_num=None):
         super().__init__()
@@ -36,7 +24,7 @@ class SslDataset(Dataset):
         img_file_name = self.file_names[item]
         img_fp = f'{self.img_dir}/{img_file_name}'
         img = image.read_img(img_fp, channel_first=False)
-        img = crop_img(img)
+        img = image.crop_img(img)
         img = torch.tensor(img)
         img = torch.permute(img, [2, 0, 1])
         img = self.resize(img)
