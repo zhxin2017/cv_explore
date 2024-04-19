@@ -135,7 +135,7 @@ class DETR(nn.Module):
         self.train = train
         self.cid_set = set(range(n_cls))
 
-    def forward(self, x, masks=None, cids_gt_batch=None):
+    def forward(self, x, masks=None, cids_gt_batch=None, cids_gt_sample_num_batch=None):
         if masks is not None:
             enc_masks = torch.permute(masks, [0, 2, 1]) @ masks
         else:
@@ -147,45 +147,60 @@ class DETR(nn.Module):
         src_cls_prob_max, src_cls = torch.max(src_cls_prob, dim=-1)  # both bsz * seq_len
         src_cids = [list(set(p) - {0}) for p in src_cls.tolist()]
 
+        src_cls_loss_batch = 0
+
         if self.train:
             assert cids_gt_batch is not None
-            matched_cls_logits_batch = []
-            matched_cids_batch = []
-            n_obj_batch = 0
             tp_batch = 0
             tn_batch = 0
+            n_T_batch = 0
+            n_cid_extended_batch = 0
             for b in range(bsz):
                 cids_pred = set(src_cids[b])
-                cids_gt = cids_gt_batch[b]
-                n_obj = len(cids_gt)
-                tp_batch += len(set(cids_gt).intersection(cids_pred))
-                n_obj_batch += n_obj
-                cids_gt_neg = self.cid_set - set(cids_gt)
-                tn_batch += len(cids_gt_neg.intersection(self.cid_set - cids_pred))
+                tp_batch += len(set(cids_gt_batch[b]).intersection(cids_pred))
 
-                cids_extended = cids_gt + list(cids_gt_neg)
-                cids_tgt = [0] * n_cls
-                cids_tgt[:n_obj] = cids_extended[:n_obj]
+                cids_gt_extended = []
+                for c in range(len(cids_gt_batch[b])):
+                    for d in range(cids_gt_sample_num_batch[b][c]):
+                        cids_gt_extended.append(cids_gt_batch[b][c])
+
+                # T stands for time step, since treating a feature map grid as a time step in sequences
+                n_pos_T = len(cids_gt_extended)
+                n_neg_T = cids_gt_sample_num_batch[b][-1]
+                n_T = n_pos_T + n_neg_T
+                n_T_batch += n_T
+
+                cids_gt_neg = random.choices(list(self.cid_set - set(cids_gt_batch[b])), k=n_neg_T)
+                cids_gt_extended.extend(cids_gt_neg)
+                n_cid_extended_batch += len(set(cids_gt_extended))
+
+                tn_batch += len(set(cids_gt_neg) - cids_pred)
+
+                cids_tgt = [0] * len(cids_gt_extended)
+                cids_tgt[:n_pos_T] = cids_gt_extended[:n_pos_T]
                 cids_tgt = torch.tensor(cids_tgt, dtype=torch.long, device=x.device)
-                prob_to_assign = 1 - src_cls_prob[b,:, cids_extended]  # subtract by 1 to fit hungarian method that minimize cost
+
+                prob_to_assign = 1 - src_cls_prob[b,:, cids_gt_extended]  # subtract by 1 to fit hungarian method that minimize cost
                 rows, cols = scipy.optimize.linear_sum_assignment(prob_to_assign.detach().cpu().numpy())
-                matched_cls_logits_batch.append(src_cls_logits[b, rows])
-                matched_cids_batch.append(cids_tgt[cols])
-            matched_cls_logits_batch = torch.stack(matched_cls_logits_batch).view(bsz * n_cls, n_cls)
-            matched_cids_batch = torch.stack(matched_cids_batch).view(bsz * n_cls)
-            src_cls_loss = ce(matched_cls_logits_batch, matched_cids_batch)
 
-            src_cls_recall = tp_batch / n_obj_batch
-            src_cls_accu = (tp_batch + tn_batch) / (bsz * n_cls)
+                src_cls_loss = ce(src_cls_logits[b, rows], cids_tgt[cols])
+                src_cls_loss_batch += src_cls_loss * n_T
 
+            n_cls_query_batch = sum([len(cids) for cids in cids_gt_batch])
+            src_cls_recall = tp_batch / n_cls_query_batch
+            src_cls_accu = (tp_batch + tn_batch) / n_cid_extended_batch
+            src_cls_loss_batch = src_cls_loss_batch / n_T_batch
             cids_as_query = cids_gt_batch
         else:
-            src_cls_loss = 0
             src_cls_recall = 0
             src_cls_accu = 0
             cids_as_query = src_cids
 
         n_cls_query = max([len(c) for c in cids_as_query])
+
+        if n_cls_query == 0:
+            return None, None, src_cls_loss_batch, src_cls_recall, src_cls_accu, None,None
+
         for c in cids_as_query:
             if len(c) < n_cls_query:
                 c.extend(random.sample(list(self.cid_set - set(c)), n_cls_query - len(c)))
@@ -206,7 +221,7 @@ class DETR(nn.Module):
             enc_diff = 0
             logits_diff = 0
 
-        return boxes, cls_logits, src_cls_loss, src_cls_recall, src_cls_accu, enc_diff, logits_diff
+        return boxes, cls_logits, src_cls_loss_batch, src_cls_recall, src_cls_accu, enc_diff, logits_diff
 
 
 if __name__ == '__main__':

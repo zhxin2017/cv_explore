@@ -30,7 +30,7 @@ num_grid = grid_size_y * grid_size_x
 # train
 # model_save_dir = '/content/drive/MyDrive/od_model'
 model_save_dir = '/Users/zx/Documents/ml/restart/resources'
-model_save_stride = 4
+model_save_stride = 1
 device_type = 'mps'
 # device_type = 'cpu'
 # device_type = 'cuda'

@@ -7,7 +7,7 @@ import torchvision
 
 
 class DetrProDS(Dataset):
-    def __init__(self, img_dir, img_dict, sample_num=None, random_flip=False):
+    def __init__(self, img_dir, img_dict, sample_num=None, random_flip='random'):
         super().__init__()
         self.sample_num = sample_num
         self.img_dir = img_dir
@@ -65,10 +65,9 @@ class DetrProDS(Dataset):
         boxes = torch.tensor(boxes) * torch.tensor([[W_rescale, H_rescale, W_rescale, H_rescale]])
         boxes = box.xywh_to_xyxy(boxes)
 
-        if self.random_flip:
-            if random.choice([True, False]):
-                img = torch.flip(img, [2])
-                boxes = boxes * torch.tensor([[-1, 1, -1, 1]]) + torch.tensor([[W_, 0, W_, 0]])
+        if (self.random_flip == 'random' and random.choice([True, False])) or self.random_flip == 'horizontal':
+            img = torch.flip(img, [2])
+            boxes = boxes * torch.tensor([[-1, 1, -1, 1]]) + torch.tensor([[W_, 0, W_, 0]])
 
         return img, boxes, cids, img_id
 

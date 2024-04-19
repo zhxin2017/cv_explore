@@ -54,8 +54,18 @@ def examine_attn(img, extractor, n_head, device,
             boxes_pred_xyxy, cls_logits_pred, _, _  = extractor.model(img_, anchors)
             anchors_expanded = anchors.view(anchors.shape[0], 1, -1).repeat(1, 6, 1).reshape(anchors.shape[0] * 6, -1)
         else:
-            boxes_pred_xyxy, cls_logits_pred, _, _, _, _ = extractor.model(img_, anchors)
+            boxes_pred_xyxy, cls_logits_pred, _, _, _, _, _ = extractor.model(img_, anchors)
             # boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_)
+    anchors_ = []
+    anchors_new = []
+    boxes = []
+    attns1 = []
+    attns2 = []
+    names = []
+
+    if boxes_pred_xyxy is None:
+        return img[0], anchors_, anchors_new, boxes, names, attns1, attns2, n_head, boxes_pred_xyxy, None
+
     boxes_pred_xyxy = boxes_pred_xyxy * max(img_size)
     cls_pred_sm = cls_logits_pred.softmax(-1)
     cls_pred = cls_pred_sm.argmax(-1)
@@ -68,13 +78,6 @@ def examine_attn(img, extractor, n_head, device,
     grid_size_x = W // patch_size
 
     n_obj = min((cls_pred[0] > 0).sum().item(), 20)
-
-    anchors_ = []
-    anchors_new = []
-    boxes = []
-    attns1 = []
-    attns2 = []
-    names = []
 
     if n_obj == 0:
         return img[0], anchors_, anchors_new, boxes, names, attns1, attns2, n_head, boxes_pred_xyxy, cls_pred
@@ -110,7 +113,6 @@ def examine_attn(img, extractor, n_head, device,
 
         attn1 = attention(q1, k1)
         attn2 = attention(q2, k2)
-
 
         attns1.append(attn1[:, obj_idx].view(n_head, grid_size_y, grid_size_x))
         attns2.append(attn2[:, obj_idx].view(n_head, grid_size_y, grid_size_x))
