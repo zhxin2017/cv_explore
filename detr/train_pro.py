@@ -12,6 +12,7 @@ from common.config import train_annotation_file, train_img_od_dict_file, max_img
 from detr.config import loss_weights
 import focalloss
 import time
+from datetime import datetime
 import match
 import numpy as np
 from torchvision.ops import distance_box_iou_loss
@@ -51,36 +52,21 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred):
     rows = rows.tolist()
     return rows, cols
 
-grid_area = patch_size**2
 
 def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4):
     ds = detr_pro_dataset.DetrProDS(train_img_dir, dicts, sample_num=population, random_flip='none')
     dl = DataLoader(ds, batch_size=batch_size, collate_fn=detr_pro_dataset.collate_fn, shuffle=False)
     for i in range(epoch):
         for j, (img_batch, masks_batch, boxes_gt_xyxy_batch, cids_gt_batch, img_id_batch) in enumerate(dl):
+            print(f'--------smp {num_sample}----------epoch {i + 1}/{epoch}---------batch {j}---------img {" ".join(img_id_batch)}---------{datetime.strftime(datetime.now(), "%Y.%m.%d %H:%M:%S")}-------------')
             bsz, c, H, W = img_batch.shape
             # forward
             img_batch = img_batch.to(device)
             # masks_batch = masks_batch.to(device)
             img_batch = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img_batch)
-            cids_gt_reduced = [list(set(c)) for c in cids_gt_batch]
-            cids_gt_sample_num_batch = []
 
-            for b in range(bsz):
-                cids_gt_box_area = {c: 0 for c in cids_gt_reduced[b]}
-                for o in range(len(cids_gt_batch[b])):
-                    cid = cids_gt_batch[b][o]
-                    x1, y1, x2, y2 = boxes_gt_xyxy_batch[b][o]
-                    obj_area = (x2 - x1) * (y2 - y1)
-                    cids_gt_box_area[cid] = cids_gt_box_area[cid] + obj_area
-
-                cids_gt_sample_num = [math.ceil(cids_gt_box_area[c] / grid_area / 8) for c in cids_gt_reduced[b]]
-                cids_gt_sample_num.append(max(int((H * W - sum(cids_gt_box_area.values())) / grid_area), 1))  # neg num
-                cids_gt_sample_num_batch.append(cids_gt_sample_num)
-
-            boxes_pred_xyxy_batch, cls_logits_pred_batch, src_cls_loss, src_cls_recall, src_cls_accu, \
-                enc_diff, logits_diff = model(img_batch, cids_gt_batch=cids_gt_reduced,
-                                              cids_gt_sample_num_batch=cids_gt_sample_num_batch)
+            boxes_pred_xyxy_batch, cls_logits_pred_batch, src_cls_pos_loss, src_cls_neg_loss, src_cls_recall, src_cls_accu, \
+                enc_diff, logits_diff = model(img_batch, cids_gt_batch=cids_gt_batch, boxes_gt_batch=boxes_gt_xyxy_batch)
 
             n_query = cls_logits_pred_batch.shape[1]
             cls_pred_batch = torch.argmax(cls_logits_pred_batch, dim=-1)
@@ -97,10 +83,11 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
 
             for b in range(bsz):
                 cids_gt = torch.tensor(cids_gt_batch[b], dtype=torch.long, device=device)
-                boxes_gt_xyxy = boxes_gt_xyxy_batch[b].to(device) / max_img_size
+                boxes_gt = boxes_gt_xyxy_batch[b]
+                boxes_gt = boxes_gt.to(device)
 
                 t = time.time()
-                rows, cols = assign_query(boxes_gt_xyxy, boxes_pred_xyxy_batch[b], cids_gt, cls_logits_pred_batch[b])
+                rows, cols = assign_query(boxes_gt, boxes_pred_xyxy_batch[b], cids_gt, cls_logits_pred_batch[b])
                 t_match += (time.time() - t)
 
                 n_pos = len(cids_gt)
@@ -115,10 +102,10 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
                 cls_query_neg_indices = [i for i in range(n_query) if i not in rows]
                 cids_gt_neg = torch.zeros(n_neg, dtype=torch.long, device=device)
                 cls_neg_loss = ce(cls_logits_pred_batch[b, cls_query_neg_indices], cids_gt_neg)
-                cls_neg_loss_batch += cls_neg_loss * n_neg
+                cls_neg_loss_batch += (cls_neg_loss * n_neg)
                 tn += torch.sum(cls_pred_batch[b, cls_query_neg_indices] == cids_gt_neg)
 
-                box_loss = distance_box_iou_loss(boxes_pred_xyxy_batch[b, rows], boxes_gt_xyxy, reduction='mean')
+                box_loss = distance_box_iou_loss(boxes_pred_xyxy_batch[b, rows], boxes_gt, reduction='mean')
                 box_loss_batch += box_loss * n_pos
 
             # accu, recall, f1, n_tp = eval.eval_pred(cls_pred, cids_gt_batch, query_pos_mask)
@@ -128,7 +115,9 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             cls_pos_loss_batch = cls_pos_loss_batch / n_pos_batch
             cls_neg_loss_batch = cls_neg_loss_batch / n_neg_batch
             box_loss_batch = box_loss_batch / n_pos_batch
-            loss = cls_pos_loss_batch + cls_neg_loss_batch + box_loss_batch * 10 + src_cls_loss
+            loss = cls_pos_loss_batch + cls_neg_loss_batch + box_loss_batch * 10 + src_cls_pos_loss + src_cls_neg_loss
+            if isinstance(src_cls_neg_loss, torch.Tensor):
+                src_cls_neg_loss = src_cls_neg_loss.detach().item()
             optimizer.zero_grad()
             t = time.time()
             loss.backward()
@@ -139,7 +128,8 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             print(f'smp {num_sample}|epoch {i + 1}/{epoch}|batch {j}'
                   f'|pl {cls_pos_loss_batch.detach().item() * 1000:.3f}'
                   f'|nl {cls_neg_loss_batch.detach().item() * 1000:.3f}'
-                  f'|sl {src_cls_loss.detach().item() * 1000:.3f}'
+                  f'|spl {src_cls_pos_loss.detach().item() * 1000:.3f}'
+                  f'|snl {src_cls_neg_loss * 1000:.3f}'
                   f'|bl {box_loss_batch.detach().item():.3f}'
                   f'|src {src_cls_recall:.3f}'
                   f'|sac {src_cls_accu:.3f}'
@@ -147,7 +137,6 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
                   # f'|dif {enc_diff:.3f} {logits_diff:.3f}'
                   f'|tmch {t_match:.3f}|tbp {t_bp:.3f}'
                   # f'|match {matched_pos_gt}|'
-                  f'|img {" ".join(img_id_batch)}'
                   )
 
 

@@ -62,7 +62,7 @@ class DetrProDS(Dataset):
             cids.append(o['category_id'])
 
         H_rescale, W_rescale = H_ / H * rescale, W_ / W * rescale
-        boxes = torch.tensor(boxes) * torch.tensor([[W_rescale, H_rescale, W_rescale, H_rescale]])
+        boxes = torch.tensor(boxes) * torch.tensor([[W_rescale, H_rescale, W_rescale, H_rescale]]) / config.max_img_size
         boxes = box.xywh_to_xyxy(boxes)
 
         if (self.random_flip == 'random' and random.choice([True, False])) or self.random_flip == 'horizontal':

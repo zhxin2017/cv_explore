@@ -47,3 +47,17 @@ def xyxy_to_cxcy(boxes):
     x0, y0, x1, y1 = boxes.unbind(-1)
     b = [(x0 + x1) / 2, (y0 + y1) / 2]
     return torch.stack(b, dim=-1)
+
+
+def inters(box1, box2):
+    box1x1, box1y1, box1x2, box1y2 = box1.unbind(-1)
+    box2x1, box2y1, box2x2, box2y2 = box2.unbind(-1)
+
+    inter_x1 = torch.max(box1x1, box2x1)
+    inter_y1 = torch.max(box1y1, box2y1)
+    inter_x2 = torch.min(box1x2, box2x2)
+    inter_y2 = torch.min(box1y2, box2y2)
+
+    inter_w = torch.max(torch.zeros_like(inter_x1, device=box1.device), inter_x2 - inter_x1)
+    inter_h = torch.max(torch.zeros_like(inter_y1, device=box1.device), inter_y2 - inter_y1)
+    return inter_w * inter_h
