@@ -54,8 +54,8 @@ def examine_attn(img, extractor, n_head, device,
             boxes_pred_xyxy, cls_logits_pred, _, _  = extractor.model(img_, anchors)
             anchors_expanded = anchors.view(anchors.shape[0], 1, -1).repeat(1, 6, 1).reshape(anchors.shape[0] * 6, -1)
         else:
-            # boxes_pred_xyxy, cls_logits_pred, _, _, _, _, _ = extractor.model(img_, anchors)
-            boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_)
+            boxes_pred_xyxy, cls_logits_pred, _, _, _, _, _, _ = extractor.model(img_)
+            # boxes_pred_xyxy, cls_logits_pred, _, _ = extractor.model(img_)
     anchors_ = []
     anchors_new = []
     boxes = []

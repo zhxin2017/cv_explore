@@ -42,8 +42,8 @@ class DetrProDS(Dataset):
         img = od_image.read_img_by_id(img_id, self.img_dir, channel_first=True)
         H, W = img.shape[1], img.shape[2]
 
-        if max(H, W) > config.max_img_size:
-            rescale = config.max_img_size / max(H, W)
+        if max(H, W) > config.max_img_len:
+            rescale = config.max_img_len / max(H, W)
             H = int(H * rescale)
             W = int(W * rescale)
         else:
@@ -62,12 +62,13 @@ class DetrProDS(Dataset):
             cids.append(o['category_id'])
 
         H_rescale, W_rescale = H_ / H * rescale, W_ / W * rescale
-        boxes = torch.tensor(boxes) * torch.tensor([[W_rescale, H_rescale, W_rescale, H_rescale]]) / config.max_img_size
+        boxes = torch.tensor(boxes) * torch.tensor([[W_rescale, H_rescale, W_rescale, H_rescale]]) / config.max_img_len
         boxes = box.xywh_to_xyxy(boxes)
 
         if (self.random_flip == 'random' and random.choice([True, False])) or self.random_flip == 'horizontal':
             img = torch.flip(img, [2])
-            boxes = boxes * torch.tensor([[-1, 1, -1, 1]]) + torch.tensor([[W_, 0, W_, 0]])
+            boxes = boxes * torch.tensor([[-1, 1, -1, 1]]) + torch.tensor([[W_ / config.max_img_len, 0, W_ / config.max_img_len, 0]])
+            boxes= boxes[..., [2, 1, 0, 3]]
 
         return img, boxes, cids, img_id
 
@@ -97,7 +98,7 @@ def collate_fn(batch):
         if masks is not None:
             mask = torch.zeros(H_ // config.patch_size, W_ // config.patch_size)
             mask[:H // config.patch_size, :W // config.patch_size] = 1
-            mask= mask.reshape(1, -1)
+            mask = mask.reshape(1, -1)
             masks.append(mask)
         cids_batch.append(cids)
         boxes_batch.append(boxes)
@@ -107,10 +108,6 @@ def collate_fn(batch):
     if masks is not None:
         masks=torch.stack(masks)
     return padded_imgs, masks, boxes_batch, cids_batch, img_ids_batch
-
-
-
-
 
 
 if __name__ == '__main__':

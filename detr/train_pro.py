@@ -1,20 +1,18 @@
 import math
 import os
+import random
+
 import torch
 from torch import optim
 from scipy.optimize import linear_sum_assignment
 import sys
 
 sys.path.append('..')
-from detr import anno, detr_pro_dataset, detr_pro, match, eval
-from common.config import train_annotation_file, train_img_od_dict_file, max_img_size, patch_size, \
-    train_base_bsz, model_save_dir, model_save_stride, device_type, train_img_dir
-from detr.config import loss_weights
-import focalloss
+from detr import anno, detr_pro_dataset, detr_pro
+from common.config import train_annotation_file, train_img_od_dict_file, patch_size, max_grid_len, \
+    train_pro_bsz, model_save_dir, model_save_stride, device_type, train_img_dir
 import time
 from datetime import datetime
-import match
-import numpy as np
 from torchvision.ops import distance_box_iou_loss
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -46,29 +44,41 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred):
     ratio = cls_loss.mean() / iouloss.mean()
 
     total_loss = iouloss + cls_loss / ratio
-    # total_loss[total_loss == torch.nan] = 1e8
     rows, cols = linear_sum_assignment(total_loss.detach().cpu().numpy())
     cols = cols.tolist()
     rows = rows.tolist()
     return rows, cols
 
 
-def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4):
-    ds = detr_pro_dataset.DetrProDS(train_img_dir, dicts, sample_num=population, random_flip='none')
+def train(epoch, batch_size, population, num_sample, random_shift=True, weight_recover=0.5, gamma=4):
+    ds = detr_pro_dataset.DetrProDS(train_img_dir, dicts, sample_num=population, random_flip='random')
     dl = DataLoader(ds, batch_size=batch_size, collate_fn=detr_pro_dataset.collate_fn, shuffle=False)
     for i in range(epoch):
         for j, (img_batch, masks_batch, boxes_gt_xyxy_batch, cids_gt_batch, img_id_batch) in enumerate(dl):
-            print(f'--------smp {num_sample}----------epoch {i + 1}/{epoch}---------batch {j}---------img {" ".join(img_id_batch)}---------{datetime.strftime(datetime.now(), "%Y.%m.%d %H:%M:%S")}-------------')
             bsz, c, H, W = img_batch.shape
+            h, w = H // patch_size, W // patch_size
+            if random_shift:
+                x_shift = random.randint(0, max_grid_len - w)
+                y_shift = random.randint(0, max_grid_len - h)
+            else:
+                x_shift = y_shift = 0
+
+            boxes_gt_xyxy_batch = [boxes_gt + torch.tensor([[x_shift, y_shift, x_shift, y_shift]], device=device) for boxes_gt in boxes_gt_xyxy_batch]
+
+            print(f'{num_sample}|{i + 1}/{epoch}|{j}|id {" ".join(img_id_batch)}'
+                  f'|{H}*{W}|{datetime.strftime(datetime.now(), "%m.%d %H:%M:%S")}', end="")
             # forward
             img_batch = img_batch.to(device)
-            # masks_batch = masks_batch.to(device)
+            if masks_batch is not None:
+                masks_batch = masks_batch.to(device)
             img_batch = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img_batch)
 
             boxes_pred_xyxy_batch, cls_logits_pred_batch, src_cls_pos_loss, src_cls_neg_loss, src_cls_recall, src_cls_accu, \
-                enc_diff, logits_diff = model(img_batch, cids_gt_batch=cids_gt_batch, boxes_gt_batch=boxes_gt_xyxy_batch)
+                enc_diff, logits_diff = model(img_batch, x_shift, y_shift, masks=masks_batch, cids_gt_batch=cids_gt_batch,
+                                              boxes_gt_batch=boxes_gt_xyxy_batch)
 
             n_query = cls_logits_pred_batch.shape[1]
+            print(f'|nq {n_query}', end="")
             cls_pred_batch = torch.argmax(cls_logits_pred_batch, dim=-1)
 
             # loss
@@ -125,15 +135,15 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             # nn.utils.clip_grad_value_(model.parameters(), 0.05)
             optimizer.step()
 
-            print(f'smp {num_sample}|epoch {i + 1}/{epoch}|batch {j}'
-                  f'|pl {cls_pos_loss_batch.detach().item() * 1000:.3f}'
-                  f'|nl {cls_neg_loss_batch.detach().item() * 1000:.3f}'
-                  f'|spl {src_cls_pos_loss.detach().item() * 1000:.3f}'
-                  f'|snl {src_cls_neg_loss * 1000:.3f}'
+            print(f'|qpl {cls_pos_loss_batch.detach().item() * 1000:.3f}'
+                  f'|qnl {cls_neg_loss_batch.detach().item() * 1000:.3f}'
                   f'|bl {box_loss_batch.detach().item():.3f}'
-                  f'|src {src_cls_recall:.3f}'
-                  f'|sac {src_cls_accu:.3f}'
-                  f'|qac {accu:.3f}|qrc {recall:.3f}: {tp}/{n_pos_batch}'
+                  f'|gpl {src_cls_pos_loss.detach().item() * 1000:.3f}'
+                  f'|gnl {src_cls_neg_loss * 1000:.3f}'
+                  f'|grc {src_cls_recall:.3f}'
+                  f'|gac {src_cls_accu:.3f}'
+                  f'|qac {accu:.3f}'
+                  f'|qrc {recall:.3f}: {tp}/{n_pos_batch}'
                   # f'|dif {enc_diff:.3f} {logits_diff:.3f}'
                   f'|tmch {t_match:.3f}|tbp {t_bp:.3f}'
                   # f'|match {matched_pos_gt}|'
@@ -151,15 +161,16 @@ if __name__ == '__main__':
         latest_version = max(versions)
         model_path_old = f'{model_save_dir}/od_pro_{latest_version}.pt'
         saved_state = torch.load(model_path_old, map_location=device)
-        model.load_state_dict(saved_state)
-        # state = model.state_dict()
-        # for k in state:
-        #     state[k] = saved_state[k]
-        # model.load_state_dict(state)
+        # model.load_state_dict(saved_state)
+        state = model.state_dict()
+        for k in state:
+            if k in saved_state:
+                state[k] = saved_state[k]
+        model.load_state_dict(state)
     for i in range(500):
         n_smp = latest_version + 1 + i
         ts = time.time()
-        train(1, batch_size=train_base_bsz, population=1000, num_sample=n_smp, weight_recover=0, gamma=4)
+        train(1, batch_size=train_pro_bsz, population=1000, num_sample=n_smp, weight_recover=0, gamma=4)
         te = time.time()
         print(f'----------------------used {te - ts:.3f} secs---------------------------')
         # train(400, batch_size=1, population=2, num_sample=i, weight_recover=0, gamma=4)
