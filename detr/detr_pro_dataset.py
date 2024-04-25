@@ -7,7 +7,7 @@ import torchvision
 
 
 class DetrProDS(Dataset):
-    def __init__(self, img_dir, img_dict, sample_num=None, random_flip='random'):
+    def __init__(self, img_dir, img_dict, sample_num=None, random_flip='random', img_id=None):
         super().__init__()
         self.sample_num = sample_num
         self.img_dir = img_dir
@@ -15,21 +15,23 @@ class DetrProDS(Dataset):
         self.random_flip = random_flip
 
         self.img_ids = []
+        if img_id is None:
+            for iid, img_info in self.img_dict.items():
+                iscrowd = False
+                objs = img_info['objs']
+                if len(objs) == 0:
+                    continue
+                for obj_ in objs:
+                    if obj_['iscrowd'] == 1:
+                        iscrowd = True
+                        break
+                if iscrowd:
+                    continue
+                self.img_ids.append(iid)
 
-        for iid, img_info in self.img_dict.items():
-            iscrowd = False
-            objs = img_info['objs']
-            if len(objs) == 0:
-                continue
-            for obj_ in objs:
-                if obj_['iscrowd'] == 1:
-                    iscrowd = True
-                    break
-            if iscrowd:
-                continue
-            self.img_ids.append(iid)
-
-        random.shuffle(self.img_ids)
+            random.shuffle(self.img_ids)
+        else:
+            self.img_ids.append(img_id)
 
         n_imgs = len(self.img_ids)
 

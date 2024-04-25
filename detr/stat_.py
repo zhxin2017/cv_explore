@@ -1,6 +1,6 @@
 from detr import anno, detr_dataset
 import torch
-from tqdm import tqdm
+# from tqdm import tqdm
 from torch.utils.data import DataLoader
 from common.config import train_annotation_file, train_img_od_dict_file
 from detr.config import cid_to_occurrence, n_cls
@@ -89,16 +89,16 @@ for i in range(500):
 # c = torch.concat((a, b), dim=-1)
 # print(c)
 
-dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='detr')
+dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
 ds = detr_dataset.OdDataset(dicts, n_query, cid_only=True)
-max_num = 0
+max_cls_num = 0
 for img, bboxes_padded, indices_padded, num_box, img_id in ds:
     cid_to_count = {}
     for i in range(num_box):
         cid = indices_padded[i].item()
         cid_to_count.setdefault(cid, []).append(cid)
         count = len(cid_to_count[cid])
-        if count > max_num:
+        if count > max_cls_num:
             print(count)
             print(img_id)
-            max_num = count
+            max_cls_num = count
