@@ -45,7 +45,7 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred):
 
     ratio = cls_loss.mean() / iouloss.mean()
 
-    total_loss = iouloss + cls_loss / ratio
+    total_loss = iouloss * 20 + cls_loss
     rows, cols = linear_sum_assignment(total_loss.detach().cpu().numpy())
     cols = cols.tolist()
     rows = rows.tolist()
@@ -89,9 +89,9 @@ def train(epoch, batch_size, population, num_sample, random_shift=True):
             cls_pred_batch = torch.argmax(cls_logits_pred_batch, dim=-1)
 
             # loss
-            cls_pos_loss_batch = 0
-            cls_neg_loss_batch = 0
-            box_loss_batch = 0
+            cls_pos_loss_b = 0
+            cls_neg_loss_b = 0
+            box_loss_b = 0
             t_match = 0
             n_pos_batch = 0
             n_neg_batch = 0
@@ -100,39 +100,44 @@ def train(epoch, batch_size, population, num_sample, random_shift=True):
 
             for b in range(bsz):
                 cids_gt = torch.tensor(cids_gt_batch[b], dtype=torch.long, device=device)[sampled_objs_indices[b]]
-                boxes_gt = boxes_gt_xyxy_batch[b][sampled_objs_indices[b]]
-                boxes_gt = boxes_gt.to(device)
-
-                t = time.time()
-                rows, cols = assign_query(boxes_gt, boxes_pred_xyxy_batch[b], cids_gt, cls_logits_pred_batch[b])
-                t_match += (time.time() - t)
-
                 n_pos = len(cids_gt)
-                n_pos_batch += n_pos
+
+                if n_pos > 0:
+
+                    boxes_gt = boxes_gt_xyxy_batch[b][sampled_objs_indices[b]]
+                    boxes_gt = boxes_gt.to(device)
+
+                    t = time.time()
+                    rows, cols = assign_query(boxes_gt, boxes_pred_xyxy_batch[b], cids_gt, cls_logits_pred_batch[b])
+                    t_match += (time.time() - t)
+
+                    box_loss = distance_box_iou_loss(boxes_pred_xyxy_batch[b, rows], boxes_gt, reduction='mean')
+                    box_loss_b += box_loss * n_pos
+
+                    n_pos_batch += n_pos
+                    # cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt_batch, ce_alpha, gamma=gamma).mean()
+                    cls_pos_loss = ce(cls_logits_pred_batch[b, rows], cids_gt[cols])
+                    cls_pos_loss_b += cls_pos_loss * n_pos
+                    tp += torch.sum(cls_pred_batch[b, rows] == cids_gt[cols])
+
+                else:
+                    rows = []
+
                 n_neg = n_query - n_pos
                 n_neg_batch += n_neg
-                # cls_loss = focalloss.focal_loss(cls_logits_pred, cids_gt_batch, ce_alpha, gamma=gamma).mean()
-                cls_pos_loss = ce(cls_logits_pred_batch[b, rows], cids_gt[cols])
-                cls_pos_loss_batch += cls_pos_loss * n_pos
-                tp += torch.sum(cls_pred_batch[b, rows] == cids_gt[cols])
-
                 cls_query_neg_indices = [i for i in range(n_query) if i not in rows]
                 cids_gt_neg = torch.zeros(n_neg, dtype=torch.long, device=device)
                 cls_neg_loss = ce(cls_logits_pred_batch[b, cls_query_neg_indices], cids_gt_neg)
-                cls_neg_loss_batch += (cls_neg_loss * n_neg)
+                cls_neg_loss_b += (cls_neg_loss * n_neg)
                 tn += torch.sum(cls_pred_batch[b, cls_query_neg_indices] == cids_gt_neg)
 
-                box_loss = distance_box_iou_loss(boxes_pred_xyxy_batch[b, rows], boxes_gt, reduction='mean')
-                box_loss_batch += box_loss * n_pos
-
-            # accu, recall, f1, n_tp = eval.eval_pred(cls_pred, cids_gt_batch, query_pos_mask)
-            recall = tp / n_pos_batch
+            recall = (tp + 1e-9) / (n_pos_batch + 1e-9)
             accu = (tp + tn) / (n_pos_batch + n_neg_batch)
 
-            cls_pos_loss_batch = cls_pos_loss_batch / n_pos_batch
-            cls_neg_loss_batch = cls_neg_loss_batch / n_neg_batch
-            box_loss_batch = box_loss_batch / n_pos_batch
-            loss = cls_pos_loss_batch + cls_neg_loss_batch * 5 + box_loss_batch * 10 + src_cls_pos_loss + src_cls_neg_loss
+            cls_pos_loss_b = cls_pos_loss_b / (n_pos_batch + 1e-9)
+            cls_neg_loss_b = cls_neg_loss_b / n_neg_batch
+            box_loss_b = box_loss_b / (n_pos_batch + 1e-9)
+            loss = cls_pos_loss_b + cls_neg_loss_b * 5 + box_loss_b * 10 + src_cls_pos_loss + src_cls_neg_loss * 10
             # print(f'loss size {sys.getsizeof(loss)}', end='|')
             t = time.time()
             optimizer.zero_grad()
@@ -143,10 +148,14 @@ def train(epoch, batch_size, population, num_sample, random_shift=True):
 
             if isinstance(src_cls_neg_loss, torch.Tensor):
                 src_cls_neg_loss = src_cls_neg_loss.detach().item()
+            if isinstance(cls_pos_loss_b, torch.Tensor):
+                cls_pos_loss_b = cls_pos_loss_b.detach().item()
+            if isinstance(box_loss_b, torch.Tensor):
+                box_loss_b = box_loss_b.detach().item()
 
-            print(f'|qpl {cls_pos_loss_batch.detach().item() * 1000:.3f}'
-                  f'|qnl {cls_neg_loss_batch.detach().item() * 1000:.3f}'
-                  f'|bl {box_loss_batch.detach().item():.3f}'
+            print(f'|qpl {cls_pos_loss_b * 1000:.3f}'
+                  f'|qnl {cls_neg_loss_b.detach().item() * 1000:.3f}'
+                  f'|bl {box_loss_b:.3f}'
                   f'|gpl {src_cls_pos_loss.detach().item() * 1000:.3f}'
                   f'|gnl {src_cls_neg_loss * 1000:.3f}'
                   f'|grc {src_cls_recall:.3f}'

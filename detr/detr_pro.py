@@ -180,7 +180,7 @@ class DETR(nn.Module):
                 obj_x1, obj_y1, obj_x2, obj_y2 = boxes_gt.view(1, n_obj, 4).unbind(2)
                 obj_center_x, obj_center_y = (obj_x1 + obj_x2) / 2, (obj_y1 + obj_y2) / 2
 
-                distance_matrix = ((grid_center_x - obj_center_x)**2 + (grid_center_y - obj_center_y)**2)**.5
+                distance_matrix = (grid_center_x - obj_center_x)**2 + (grid_center_y - obj_center_y)**2
 
                 # match positive samples
                 cids_tgt = []
@@ -240,31 +240,35 @@ class DETR(nn.Module):
         else:
             cids_set = src_cids
 
-        n_cls_query = max([len(c) for c in cids_set])
+        max_n_cid = max([len(c) for c in cids_set])
 
-        if n_cls_query == 0:
-            return None, None, src_cls_pos_loss_batch, src_cls_neg_loss_batch, src_cls_recall, src_cls_accu, None,None
+        if max_n_cid == 0:
+            return None, None, src_cls_pos_loss_batch, src_cls_neg_loss_batch, src_cls_recall, src_cls_accu, None, None,None
+
+        n_pos_sample = random.randint(0, max_n_cid)
+        n_neg_sample = random.randint(0, 4)
+        if n_pos_sample == 0 and n_neg_sample == 0:
+            n_neg_sample = 1
 
         sampled_pos_cids = []
         sampled_cids = []
 
         for c in cids_set:
             if self.train:
-                num_pos_sample = random.randint(1, len(c))
-                pos_cids = random.sample(c, num_pos_sample)
+                n_pos_sample_ = min(n_pos_sample, len(c))
+                pos_cids = random.sample(c, n_pos_sample_)
+                neg_cids = random.sample(list(self.cid_set - set(c)), n_neg_sample + n_pos_sample - n_pos_sample_)
             else:
-                num_pos_sample = len(c)
                 pos_cids = c
+                neg_cids = random.sample(list(self.cid_set - set(c)), max_n_cid - len(c))
             sampled_pos_cids.append(pos_cids)
-            num_neg_sample = n_cls_query - num_pos_sample
-            neg_cids = random.sample(list(self.cid_set - set(c)), num_neg_sample)
             sampled_cids.append(pos_cids + neg_cids)
 
         sampled_cids = torch.tensor(sampled_cids, dtype=torch.long, device=x.device)
         cls_query = self.cls_emb_m(sampled_cids)
 
         if masks is not None:
-            dec_masks = torch.ones([bsz, (n_cls_query + 2) * n_pos_query, 1], device=x.device) @ masks
+            dec_masks = torch.ones([bsz, (max_n_cid + 2) * n_pos_query, 1], device=x.device) @ masks
         else:
             dec_masks = None
 
