@@ -1,4 +1,3 @@
-import math
 import os
 import random
 
@@ -8,7 +7,8 @@ from scipy.optimize import linear_sum_assignment
 import sys
 
 sys.path.append('..')
-from detr import anno, detr_pro_dataset, detr_pro
+from detr import anno
+from detr_pro import detr_pro_model, detr_pro_dataset
 from common.config import train_annotation_file, train_img_od_dict_file, patch_size, max_grid_len, max_img_len, \
     train_pro_bsz, model_save_dir, model_save_stride, device_type, train_img_dir
 import time
@@ -21,7 +21,7 @@ from torchvision import transforms
 device = torch.device(device_type)
 
 
-model = detr_pro.DETR(dmodel=160, dhead=32,n_enc_layer=16, n_dec_layer=6, exam_diff=True)
+model = detr_pro_model.DETR(dmodel=320, dhead=64, n_enc_layer=20, n_dec_layer=8, exam_diff=True)
 model.to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
@@ -137,7 +137,7 @@ def train(epoch, batch_size, population, num_sample, random_shift=True):
             cls_pos_loss_b = cls_pos_loss_b / (n_pos_batch + 1e-9)
             cls_neg_loss_b = cls_neg_loss_b / n_neg_batch
             box_loss_b = box_loss_b / (n_pos_batch + 1e-9)
-            loss = cls_pos_loss_b + cls_neg_loss_b * 5 + box_loss_b * 10 + src_cls_pos_loss + src_cls_neg_loss * 10
+            loss = cls_pos_loss_b + cls_neg_loss_b + box_loss_b * 10 + src_cls_pos_loss + src_cls_neg_loss
             # print(f'loss size {sys.getsizeof(loss)}', end='|')
             t = time.time()
             optimizer.zero_grad()
@@ -188,10 +188,10 @@ if __name__ == '__main__':
     for i in range(5000):
         n_smp = latest_version + 1 + i
         ts = time.time()
-        train(1, batch_size=train_pro_bsz, population=1000, num_sample=n_smp, random_shift=True)
+        train(1, batch_size=train_pro_bsz, population=1000, num_sample=n_smp, random_shift=False)
         te = time.time()
         print(f'----------------------used {te - ts:.3f} secs---------------------------')
-        # train(400, batch_size=1, population=2, num_sample=i, weight_recover=0, gamma=4)
+        # train(400, batch_size=1, population=2, num_sample=i, random_shift=False, )
         # train(2, batch_size=2, population=2, num_sample=i, weight_recover=.5, gamma=2)
         if n_smp % model_save_stride == 0:
             model_path_new = f'{model_save_dir}/od_pro_{n_smp}.pt'
@@ -200,3 +200,4 @@ if __name__ == '__main__':
                 os.remove(model_path_old)
             model_path_old = model_path_new
         # break
+
