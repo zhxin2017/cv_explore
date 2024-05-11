@@ -79,7 +79,8 @@ def train(epoch, batch_size, population, num_sample, random_shift=True):
             img_batch = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(img_batch)
 
             (boxes_pred_xyxy_batch, cls_logits_pred_batch, src_cls_pos_loss, src_cls_neg_loss,
-             src_cls_recall, src_cls_accu, sampled_pos_cids, enc_diff, logits_diff) = (
+             src_cls_recall, src_cls_accu, sampled_pos_cids, src_cls, grid_bgd_indices_batch,
+                grid_obj_indices_batch, grid_obj_cids_batch, enc_diff, logits_diff) = (
                 model(img_batch, x_shift, y_shift, masks=masks_batch,
                       cids_gt_batch=cids_gt_batch, boxes_gt_batch=boxes_gt_xyxy_batch))
             sampled_objs_indices = [[p for p in range(len(cids_gt_batch[b])) if cids_gt_batch[b][p] in sampled_pos_cids[b]] for b in range(bsz)]
@@ -137,7 +138,7 @@ def train(epoch, batch_size, population, num_sample, random_shift=True):
             cls_pos_loss_b = cls_pos_loss_b / (n_pos_batch + 1e-9)
             cls_neg_loss_b = cls_neg_loss_b / n_neg_batch
             box_loss_b = box_loss_b / (n_pos_batch + 1e-9)
-            loss = cls_pos_loss_b + cls_neg_loss_b + box_loss_b * 10 + src_cls_pos_loss + src_cls_neg_loss
+            loss = cls_pos_loss_b + cls_neg_loss_b * 5 + box_loss_b * 10 + src_cls_pos_loss + src_cls_neg_loss
             # print(f'loss size {sys.getsizeof(loss)}', end='|')
             t = time.time()
             optimizer.zero_grad()
@@ -182,6 +183,8 @@ if __name__ == '__main__':
         model.load_state_dict(saved_state)
         # state = model.state_dict()
         # for k in state:
+        #     if k.startswith('decoder.pos_query_emb_m'):
+        #         continue
         #     if k in saved_state:
         #         state[k] = saved_state[k]
         # model.load_state_dict(state)

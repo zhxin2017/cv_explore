@@ -80,7 +80,6 @@ class DetrDecoder(nn.Module):
     def __init__(self, n_dec_layer, dmodel, d_head, cls_emb_m):
         super().__init__()
         self.n_dec_layer = n_dec_layer
-        self.n_pos_query = n_pos_query
         self.pos_query_emb_m = nn.Embedding(n_pos_query, dmodel)
         self.cls_emb_m = cls_emb_m
         self.ln = nn.LayerNorm(dmodel)
@@ -102,20 +101,24 @@ class DetrDecoder(nn.Module):
         self.cls_reg = nn.Linear(dmodel, n_cls, bias=False)
         self.box_reg = base.MLP(dmodel, dmodel * 2, 4, 2)
 
-    def forward(self, src, cls_query, mask=None):
+    def forward(self, src, cls_query, ca_mask=None):
         B = src.shape[0]
-        pos_query = self.pos_query_emb_m(torch.arange(self.n_pos_query, device=src.device))
+        pos_query = self.pos_query_emb_m(torch.arange(n_pos_query, device=src.device))
         n_cls_query = cls_query.shape[1]
-        pos_query = pos_query.view(1, 1, self.n_pos_query, -1).repeat(B, n_cls_query, 1, 1)
-        cls_query = cls_query.view(B, n_cls_query, 1, -1).repeat(1, 1, self.n_pos_query, 1)
-        q = (cls_query + pos_query).reshape(B, n_cls_query * self.n_pos_query, -1)
+        pos_query = pos_query.view(1, 1, n_pos_query, -1).repeat(B, n_cls_query, 1, 1)
+        cls_query = cls_query.view(B, n_cls_query, 1, -1).repeat(1, 1, n_pos_query, 1)
+        q = (cls_query + pos_query).reshape(B, n_cls_query * n_pos_query, -1)
 
         for i in range(self.n_dec_layer):
 
-            q = self.ca_layers[i](q, src, src, q, mask)
+            q = self.ca_layers[i](q, src, src, q, ca_mask)
 
             if i < self.n_dec_layer - 1:
-                q = self.sa_layers[i](q, q, q, q)
+                n_query = n_cls_query * n_pos_query
+                sa_mask = torch.zeros([n_query, n_query], device=src.device)
+                for m in range(n_cls_query):
+                    sa_mask[m * n_pos_query: (m + 1) * n_pos_query, m * n_pos_query: (m + 1) * n_pos_query] = 1
+                q = self.sa_layers[i](q, q, q, q, sa_mask)
 
         boxes = F.sigmoid(self.box_reg(self.ln(q)))
         cls_logits = self.cls_reg(self.ln(q))
@@ -156,6 +159,10 @@ class DETR(nn.Module):
         src_cls_pos_loss_batch = 0
         src_cls_neg_loss_batch = 0
 
+        grid_bgd_indices_batch = []
+        grid_obj_indices_batch = []
+        grid_obj_cids_batch = []
+
         if self.train:
             assert cids_gt_batch is not None
             tp_batch = sum(len(set(cids_gt_batch[b]).intersection(set(src_cids[b]))) for b in range(bsz))
@@ -174,6 +181,7 @@ class DETR(nn.Module):
                 # match negative samples
                 grid_bgd_indices, grid_obj_indices, grid_x1, grid_y1, grid_x2, grid_y2 = (
                     assist.separate_bgd_grids(w, h, x_shift, y_shift, boxes_gt))
+                grid_bgd_indices_batch.append(grid_bgd_indices)
 
                 n_grid_bgd = len(grid_bgd_indices)
                 print(f'|nng {" " * (3 - len(str(n_grid_bgd)))}{n_grid_bgd}', end="")
@@ -207,7 +215,12 @@ class DETR(nn.Module):
                 cids_tgt = torch.tensor(cids_tgt, dtype=torch.long, device=x.device)
                 cost_matrix = 1 - src_cls_prob[b, grid_obj_indices][:, cids_tgt] + distance_matrix[:, tgt_indices] * 4
                 rows, cols = scipy.optimize.linear_sum_assignment(cost_matrix.detach().cpu().numpy())
-                src_cls_pos_loss = ce(src_cls_logits[b, grid_obj_indices][rows], cids_tgt[cols]) * n_tgt_grid_pos
+                matched_grid_obj_indices = grid_obj_indices[rows]
+                matched_grid_obj_cids = cids_tgt[cols]
+                grid_obj_indices_batch.append(matched_grid_obj_indices)
+                grid_obj_cids_batch.append(matched_grid_obj_cids)
+
+                src_cls_pos_loss = ce(src_cls_logits[b, matched_grid_obj_indices], matched_grid_obj_cids) * n_tgt_grid_pos
                 src_cls_pos_loss_batch += src_cls_pos_loss
 
             src_cls_neg_loss_batch = src_cls_neg_loss_batch / (n_tgt_grid_neg_batch + 1e-9)
@@ -223,7 +236,8 @@ class DETR(nn.Module):
         max_n_cid = max([len(c) for c in cids_set])
 
         if max_n_cid == 0:
-            return None, None, src_cls_pos_loss_batch, src_cls_neg_loss_batch, src_cls_recall, src_cls_accu, None, None, None
+            return (None, None, src_cls_pos_loss_batch, src_cls_neg_loss_batch, src_cls_recall, src_cls_accu, None,
+                    src_cls, grid_bgd_indices_batch, grid_obj_indices_batch, grid_obj_cids_batch, None, None)
 
         n_pos_query = max_n_cid
         # n_pos_query = random.randint(0, max_n_cid)
@@ -249,6 +263,7 @@ class DETR(nn.Module):
         cls_query = self.cls_emb_m(sampled_cids)
 
         if masks is not None:
+            # todo it seems to be wrong here.
             dec_masks = torch.ones([bsz, (max_n_cid + 2) * n_pos_query, 1], device=x.device) @ masks
         else:
             dec_masks = None
@@ -262,7 +277,8 @@ class DETR(nn.Module):
             enc_diff = 0
             logits_diff = 0
 
-        return boxes, cls_logits, src_cls_pos_loss_batch, src_cls_neg_loss_batch, src_cls_recall, src_cls_accu, sampled_pos_cids, enc_diff, logits_diff
+        return (boxes, cls_logits, src_cls_pos_loss_batch, src_cls_neg_loss_batch, src_cls_recall, src_cls_accu,
+                sampled_pos_cids, src_cls,  grid_bgd_indices_batch, grid_obj_indices_batch, grid_obj_cids_batch, enc_diff, logits_diff)
 
 
 if __name__ == '__main__':

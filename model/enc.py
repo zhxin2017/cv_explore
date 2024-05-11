@@ -2,44 +2,49 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from model import pe, tsfm
-from common.config import num_grid
+from common.config import max_grid_h, max_grid_w, patch_size
 
 
 class Encoder(nn.Module):
-    def __init__(self, n_enc_layer, d_cont, d_head, d_coord_emb, pretrain=False):
+    def __init__(self, n_enc_layer, dmodel, dhead, pretrain=False):
         super().__init__()
 
-        self.cnn1 = nn.Conv2d(3, 1024, (4, 4), stride=(4, 4))
-        self.cnn2 = nn.Conv2d(1024, d_cont, (4, 4), stride=(4, 4))
-        self.cnn_ln = nn.LayerNorm(d_cont)
+        self.cnn = nn.Conv2d(3, dmodel, (patch_size, patch_size),
+                             stride=(patch_size, patch_size))
+        self.ln = nn.LayerNorm(dmodel)
+        self.dmodel = dmodel
 
-        dq = d_cont + 2 * d_coord_emb
-        n_head = dq // d_head
+        n_head = dmodel // dhead
 
-        self.pos_emb_m = pe.Sinusoidal(d_coord_emb)
+        self.pos_y_emb_m = nn.Embedding(max_grid_h, dmodel)
+        self.pos_x_emb_m = nn.Embedding(max_grid_w, dmodel)
 
         self.n_enc_layer = n_enc_layer
-        self.attn_layers = nn.ModuleList()
+        self.enc_layers = nn.ModuleList()
         for i in range(n_enc_layer):
-            self.attn_layers.append(tsfm.AttnLayer(dq, dq, d_cont, n_head))
-
+            self.enc_layers.append(tsfm.AttnLayer(dmodel, dmodel, dmodel, n_head))
         self.pretrain = pretrain
         if pretrain:
-            self.next_token_emb_m = pe.Embedding1D(1, d_cont)
+            self.next_token_emb_m = pe.Embedding1D(1, dmodel)
 
-    def forward(self, x, mask=None):
-        x = F.relu(self.cnn1(x))
-        x = F.relu(self.cnn2(x))
+    def forward(self, x, x_shift=0, y_shift=0, mask=None):
+        x = F.relu(self.cnn(x))
         x = x.permute([0, 2, 3, 1])
-        x = self.cnn_ln(x)
+        x = self.ln(x)
 
-        bsz = x.shape[0]
-        pos = pe.gen_pos_2d(x, pos='center').view(bsz, num_grid, 2)
-        pos_emb = self.pos_emb_m(pos)
-        x = x.view(bsz, num_grid, -1)
+        b, h, w, c = x.shape
+        num_grid = h * w
+        y_indices = torch.arange(h, device=x.device) + y_shift
+        x_indices = torch.arange(w, device=x.device) + x_shift
+        pos_y_emb = (self.pos_y_emb_m(y_indices).view(1, h, 1, self.dmodel).
+                     repeat(b, 1, w, 1).view(b, num_grid, self.dmodel))
+        pos_x_emb = (self.pos_x_emb_m(x_indices).view(1, 1, w, self.dmodel).
+                     repeat(b, h, 1, 1).view(b, num_grid, self.dmodel))
+        pos_emb = self.ln(pos_y_emb + pos_x_emb)
+        x = x.view(b, num_grid, -1)
 
         if self.pretrain:
-            next_token_emb = self.next_token_emb_m(x).repeat(1, num_grid, 1)
+            next_token_emb = self.ln(self.next_token_emb_m(x).repeat(1, num_grid, 1))
             x = torch.concat([x, next_token_emb], dim=1)
             pos_emb = torch.concat([pos_emb, pos_emb], dim=1)
             mask_11 = torch.tril(torch.ones([num_grid, num_grid], device=x.device))
@@ -52,7 +57,9 @@ class Encoder(nn.Module):
         else:
             mask = mask
 
-        for i in range(self.n_enc_layer):
-            q = torch.concat([x, pos_emb], dim=-1)
-            x = self.attn_layers[i](q, q, x, q, mask)
+        x = x + pos_emb
+
+        for enc_layer in self.enc_layers:
+            x = enc_layer(x, x, x, x, mask)
         return x, pos_emb
+
