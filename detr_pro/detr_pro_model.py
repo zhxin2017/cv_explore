@@ -135,7 +135,7 @@ class DETR(nn.Module):
         self.decoder = DetrDecoder(n_dec_layer, dmodel, dhead, self.cls_emb_m)
         self.exam_diff = exam_diff
         self.train = train
-        self.cid_set = set(range(n_cls))
+        self.cid_set = set(range(n_cls)) - {0}
 
     def forward(self, x, x_shift=0, y_shift=0, masks=None, cids_gt_batch=None, boxes_gt_batch=None):
         bsz = x.shape[0]
@@ -166,7 +166,7 @@ class DETR(nn.Module):
         if self.train:
             assert cids_gt_batch is not None
             tp_batch = sum(len(set(cids_gt_batch[b]).intersection(set(src_cids[b]))) for b in range(bsz))
-            tn_batch = sum(len(self.cid_set - {0} - set(cids_gt_batch[b]) - set(src_cids[b])) for b in range(bsz))
+            tn_batch = sum(len(self.cid_set - set(cids_gt_batch[b]) - set(src_cids[b])) for b in range(bsz))
             n_cid_gt = sum([len(set(cids)) for cids in cids_gt_batch])
             src_cls_recall = tp_batch / n_cid_gt
             src_cls_accu = (tp_batch + tn_batch) / (n_cls - 1) / bsz
@@ -213,7 +213,7 @@ class DETR(nn.Module):
                 print(f'|npg {" " * (3 - len(str(n_tgt_grid_pos)))}{n_tgt_grid_pos}', end="")
                 n_tgt_grid_pos_batch += n_tgt_grid_pos
                 cids_tgt = torch.tensor(cids_tgt, dtype=torch.long, device=x.device)
-                cost_matrix = 1 - src_cls_prob[b, grid_obj_indices][:, cids_tgt] + distance_matrix[:, tgt_indices] * 4
+                cost_matrix = 1 - src_cls_prob[b, grid_obj_indices][:, cids_tgt] + distance_matrix[:, tgt_indices]
                 rows, cols = scipy.optimize.linear_sum_assignment(cost_matrix.detach().cpu().numpy())
                 matched_grid_obj_indices = grid_obj_indices[rows]
                 matched_grid_obj_cids = cids_tgt[cols]

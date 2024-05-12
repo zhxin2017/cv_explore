@@ -17,9 +17,7 @@ from torchvision.ops import distance_box_iou_loss
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-
 device = torch.device(device_type)
-
 
 model = detr_pro_model.DETR(dmodel=320, dhead=64, n_enc_layer=20, n_dec_layer=8, exam_diff=True)
 model.to(device)
@@ -29,6 +27,7 @@ optimizer = optim.Adam(model.parameters(), lr=1e-5)
 dicts = anno.build_img_dict(train_annotation_file, train_img_od_dict_file, task='od')
 
 ce = torch.nn.CrossEntropyLoss()
+
 
 @torch.no_grad()
 def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred):
@@ -44,8 +43,9 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred):
     cls_loss = torch.nn.functional.cross_entropy(cls_pred, cids_gt, reduction='none').view(n_query, n_obj)
 
     ratio = cls_loss.mean() / iouloss.mean()
+    total_loss = iouloss * ratio + cls_loss
 
-    total_loss = iouloss * 20 + cls_loss
+    # total_loss = iouloss * 20 + cls_loss
     rows, cols = linear_sum_assignment(total_loss.detach().cpu().numpy())
     cols = cols.tolist()
     rows = rows.tolist()
@@ -80,10 +80,12 @@ def train(epoch, batch_size, population, num_sample, random_shift=True):
 
             (boxes_pred_xyxy_batch, cls_logits_pred_batch, src_cls_pos_loss, src_cls_neg_loss,
              src_cls_recall, src_cls_accu, sampled_pos_cids, src_cls, grid_bgd_indices_batch,
-                grid_obj_indices_batch, grid_obj_cids_batch, enc_diff, logits_diff) = (
+             grid_obj_indices_batch, grid_obj_cids_batch, enc_diff, logits_diff) = (
                 model(img_batch, x_shift, y_shift, masks=masks_batch,
                       cids_gt_batch=cids_gt_batch, boxes_gt_batch=boxes_gt_xyxy_batch))
-            sampled_objs_indices = [[p for p in range(len(cids_gt_batch[b])) if cids_gt_batch[b][p] in sampled_pos_cids[b]] for b in range(bsz)]
+            sampled_objs_indices = [
+                [p for p in range(len(cids_gt_batch[b])) if cids_gt_batch[b][p] in sampled_pos_cids[b]] for b in
+                range(bsz)]
 
             n_query = cls_logits_pred_batch.shape[1]
             print(f'|nq {" " * (3 - len(str(n_query)))}{n_query}', end="")
@@ -112,7 +114,7 @@ def train(epoch, batch_size, population, num_sample, random_shift=True):
                     rows, cols = assign_query(boxes_gt, boxes_pred_xyxy_batch[b], cids_gt, cls_logits_pred_batch[b])
                     t_match += (time.time() - t)
 
-                    box_loss = distance_box_iou_loss(boxes_pred_xyxy_batch[b, rows], boxes_gt, reduction='mean')
+                    box_loss = distance_box_iou_loss(boxes_pred_xyxy_batch[b, rows], boxes_gt[cols], reduction='mean')
                     box_loss_b += box_loss * n_pos
 
                     n_pos_batch += n_pos
@@ -203,4 +205,3 @@ if __name__ == '__main__':
                 os.remove(model_path_old)
             model_path_old = model_path_new
         # break
-
