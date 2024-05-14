@@ -179,7 +179,7 @@ class DETR(nn.Module):
                 boxes_gt = boxes_gt.to(x.device)
 
                 # match negative samples
-                grid_bgd_indices, grid_obj_indices, grid_x1, grid_y1, grid_x2, grid_y2 = (
+                grid_bgd_indices, grid_obj_indices, grid_box_intersections, grid_indices,grid_x1, grid_y1, grid_x2, grid_y2 = (
                     assist.separate_bgd_grids(w, h, x_shift, y_shift, boxes_gt))
                 grid_bgd_indices_batch.append(grid_bgd_indices)
 
@@ -193,34 +193,31 @@ class DETR(nn.Module):
 
                 # match positive samples
                 n_obj = len(cids_gt_batch[b])
-                grid_x1, grid_y1 = grid_x1[grid_obj_indices], grid_y1[grid_obj_indices]
-                grid_center_x, grid_center_y = grid_x1.view(-1, 1) + .5 * grid_size, grid_y1.view(-1, 1) + .5 * grid_size
-                obj_x1, obj_y1, obj_x2, obj_y2 = boxes_gt.view(1, n_obj, 4).unbind(2)
-                obj_center_x, obj_center_y = (obj_x1 + obj_x2) / 2, (obj_y1 + obj_y2) / 2
-
-                distance_matrix = ((grid_center_x - obj_center_x) ** 2 + (grid_center_y - obj_center_y) ** 2)**.5
 
                 cids_tgt = []
-                tgt_indices = []
+                grid_indices_input = []
                 for o in range(n_obj):
                     cid = cids_gt_batch[b][o]
-                    x1, y1, x2, y2 = boxes_gt[o]
-                    obj_area = (x2 - x1) * (y2 - y1)
-                    n_grid_obj = math.ceil(obj_area / grid_area / 8)
-                    cids_tgt.extend([cid] * n_grid_obj)
-                    tgt_indices.extend([o] * n_grid_obj)
+                    obj_intersection_mask = grid_box_intersections[:, o] > 0
+                    obj_grid_indices = grid_indices[obj_intersection_mask]
+                    n_obj_grid = math.ceil(len(obj_grid_indices) / 5)
+
+                    obj_prob = src_cls_prob[b, obj_grid_indices, o]
+                    obj_grid_indices_input = obj_grid_indices[obj_prob.argsort()[:n_obj_grid]]
+
+                    cids_tgt.extend([cid] * n_obj_grid)
+                    grid_indices_input.append(obj_grid_indices_input)
+
                 n_tgt_grid_pos = len(cids_tgt)
                 print(f'|npg {" " * (3 - len(str(n_tgt_grid_pos)))}{n_tgt_grid_pos}', end="")
                 n_tgt_grid_pos_batch += n_tgt_grid_pos
                 cids_tgt = torch.tensor(cids_tgt, dtype=torch.long, device=x.device)
-                cost_matrix = 1 - src_cls_prob[b, grid_obj_indices][:, cids_tgt] + distance_matrix[:, tgt_indices]
-                rows, cols = scipy.optimize.linear_sum_assignment(cost_matrix.detach().cpu().numpy())
-                matched_grid_obj_indices = grid_obj_indices[rows]
-                matched_grid_obj_cids = cids_tgt[cols]
-                grid_obj_indices_batch.append(matched_grid_obj_indices)
-                grid_obj_cids_batch.append(matched_grid_obj_cids)
 
-                src_cls_pos_loss = ce(src_cls_logits[b, matched_grid_obj_indices], matched_grid_obj_cids) * n_tgt_grid_pos
+                grid_indices_input = torch.concat(grid_indices_input, dim=-1)
+                grid_obj_indices_batch.append(grid_indices_input)
+                grid_obj_cids_batch.append(cids_tgt)
+
+                src_cls_pos_loss = ce(src_cls_logits[b, grid_indices_input], cids_tgt) * n_tgt_grid_pos
                 src_cls_pos_loss_batch += src_cls_pos_loss
 
             src_cls_neg_loss_batch = src_cls_neg_loss_batch / (n_tgt_grid_neg_batch + 1e-9)
@@ -239,25 +236,16 @@ class DETR(nn.Module):
             return (None, None, src_cls_pos_loss_batch, src_cls_neg_loss_batch, src_cls_recall, src_cls_accu, None,
                     src_cls, grid_bgd_indices_batch, grid_obj_indices_batch, grid_obj_cids_batch, None, None)
 
-        n_pos_query = max_n_cid
-        # n_pos_query = random.randint(0, max_n_cid)
-        n_neg_query = random.randint(0, 10)
-        if n_pos_query == 0 and n_neg_query == 0:
-            n_neg_query = 1
-
-        sampled_pos_cids = []
         sampled_cids = []
 
-        for c in cids_set:
-            if self.train:
-                n_pos_query_ = min(n_pos_query, len(c))
-                pos_cids = random.sample(c, n_pos_query_)
-                neg_cids = random.sample(list(self.cid_set - set(c)), n_neg_query + n_pos_query - n_pos_query_)
-            else:
-                pos_cids = c
-                neg_cids = random.sample(list(self.cid_set - set(c)), max_n_cid - len(c))
-            sampled_pos_cids.append(pos_cids)
-            sampled_cids.append(pos_cids + neg_cids)
+        for b, c in enumerate(cids_set):
+            # n_neg_query = 0
+            neg_cids_fp = set(src_cids[b]) - set(c)
+            n_src_cid_fp = len(neg_cids_fp)
+            n_neg_query = max(random.randint(2, 8) + max_n_cid - len(c), n_src_cid_fp)
+            neg_cids_random = random.sample(list(self.cid_set - set(c) - set(src_cids[b])), n_neg_query - n_src_cid_fp)
+            neg_cids = list(neg_cids_fp) + neg_cids_random
+            sampled_cids.append(c + neg_cids)
 
         sampled_cids = torch.tensor(sampled_cids, dtype=torch.long, device=x.device)
         cls_query = self.cls_emb_m(sampled_cids)
@@ -278,7 +266,7 @@ class DETR(nn.Module):
             logits_diff = 0
 
         return (boxes, cls_logits, src_cls_pos_loss_batch, src_cls_neg_loss_batch, src_cls_recall, src_cls_accu,
-                sampled_pos_cids, src_cls,  grid_bgd_indices_batch, grid_obj_indices_batch, grid_obj_cids_batch, enc_diff, logits_diff)
+                src_cls, cids_set, grid_bgd_indices_batch, grid_obj_indices_batch, grid_obj_cids_batch, enc_diff, logits_diff)
 
 
 if __name__ == '__main__':

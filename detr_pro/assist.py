@@ -17,9 +17,10 @@ def separate_bgd_grids(w, h, x_shift, y_shift, boxes):
     grid_box = grid_box.view(n_grid, 1, 4).repeat(1, n_obj, 1)
 
     grid_box_intersections = box.inters(grid_box, boxes.view(1, n_obj, 4).repeat(w * h, 1, 1))
-    grid_box_intersections = grid_box_intersections.sum(dim=-1)
+    grid_intersection_sum = grid_box_intersections.sum(dim=-1)
 
     grid_indices = torch.arange(n_grid, device=boxes.device)
-    grid_bgd_indices = grid_indices[grid_box_intersections == 0]
-    grid_obj_indices = grid_indices[grid_box_intersections > 0]
-    return grid_bgd_indices, grid_obj_indices, grid_x1, grid_y1, grid_x2, grid_y2
+    grid_bgd_indices = grid_indices[grid_intersection_sum == 0]
+
+    grid_obj_indices = grid_indices[grid_intersection_sum > 0]
+    return grid_bgd_indices, grid_obj_indices, grid_box_intersections, grid_indices, grid_x1, grid_y1, grid_x2, grid_y2
