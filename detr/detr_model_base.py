@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from model import base, pe, tsfm, enc
+from tsfm import base, pe, transformer, enc
 from detr.config import n_cls
 from common.config import img_size
 
@@ -18,8 +18,8 @@ class DetrDecoder(nn.Module):
 
         n_head = dq_dec // d_head
         for i in range(n_dec_layer):
-            dec_ca_layer = tsfm.AttnLayer(dq_dec, dk_dec, dv_dec, n_head)
-            dec_sa_layer = tsfm.AttnLayer(dq_dec, dk_dec, dv_dec, n_head)
+            dec_ca_layer = tsfm.Block(dq_dec, dk_dec, dv_dec, n_head)
+            dec_sa_layer = tsfm.Block(dq_dec, dk_dec, dv_dec, n_head)
             self.dec_ca_layers.append(dec_ca_layer)
             if i < n_dec_layer - 1:
                 self.dec_sa_layers.append(dec_sa_layer)

@@ -92,7 +92,7 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
             t = time.time()
             loss.backward()
             t_bp = time.time() - t
-            # nn.utils.clip_grad_value_(model.parameters(), 0.05)
+            # nn.utils.clip_grad_value_(tsfm.parameters(), 0.05)
             optimizer.step()
 
             print(f'smp {num_sample}|epoch {i + 1}/{epoch}|batch {j}|'
@@ -118,15 +118,15 @@ if __name__ == '__main__':
         model_path_old = f'{model_save_dir}/od_detr_anchor_{latest_version}.pt'
         saved_state = torch.load(model_path_old, map_location=device)
         model.load_state_dict(saved_state)
-        # state = model.state_dict()
+        # state = tsfm.state_dict()
         # for k in state.keys():
         #     if k.startswith('decoder.anchor_shift_reg'):
         #         state[k] = saved_state[k.replace('decoder.anchor_shift_reg', 'decoder.anchor_shift_regs.0')]
         #     else:
         #         state[k] = saved_state[k]
-        # model.load_state_dict(state)
+        # tsfm.load_state_dict(state)
 
-    # model.encoder.load_state_dict(torch.load(f'{model_save_dir}/enc_od_base_896.pt'))
+    # tsfm.encoder.load_state_dict(torch.load(f'{model_save_dir}/enc_od_base_896.pt'))
 
     for name, param in model.named_parameters():
         if name.startswith('encoder'):

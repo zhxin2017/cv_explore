@@ -1,5 +1,5 @@
 import time
-from model import selective_tsfm
+from tsfm import selective_tsfm
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
@@ -37,7 +37,7 @@ class Cls4(nn.Module):
 
 
 model = Cls4(28, 28, 128)
-# model.to(mps_device)
+# tsfm.to(mps_device)
 
 train_dl = DataLoader(train_mnist, batch_size=4)
 optimizer = optim.Adam(model.parameters(), lr=0.0001)
@@ -78,5 +78,5 @@ for i in range(100):
             break
         print(f'|{i}|#{cnt}|loss: {loss.item():.4f}| accuracy {accu}')
         # if cnt == 100:
-        #     torch.save(model.state_dict(), 'models/mystfm_mnist.pt')
+        #     torch.save(tsfm.state_dict(), 'models/mystfm_mnist.pt')
 

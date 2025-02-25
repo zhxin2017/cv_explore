@@ -134,12 +134,12 @@ def train(epoch, batch_size, population, num_sample, random_shift=True, random_f
             cls_pos_loss_b = cls_pos_loss_b / (n_pos_batch + 1e-9)
             cls_neg_loss_b = cls_neg_loss_b / (n_neg_batch + 1e-9)
             box_loss_b = box_loss_b / (n_pos_batch + 1e-9)
-            loss = cls_pos_loss_b + cls_neg_loss_b * 5 + box_loss_b * 10 + src_cls_pos_loss + src_cls_neg_loss * 5
+            loss = cls_pos_loss_b + cls_neg_loss_b * 2 + box_loss_b * 10 + src_cls_pos_loss + src_cls_neg_loss * 2
             # print(f'loss size {sys.getsizeof(loss)}', end='|')
             t = time.time()
             optimizer.zero_grad()
             loss.backward()
-            # nn.utils.clip_grad_value_(model.parameters(), 0.05)
+            # nn.utils.clip_grad_value_(tsfm.parameters(), 0.05)
             optimizer.step()
             t_bp = time.time() - t
 
@@ -177,13 +177,13 @@ if __name__ == '__main__':
         model_path_old = f'{model_save_dir}/od_pro_{latest_version}.pt'
         saved_state = torch.load(model_path_old, map_location=device)
         model.load_state_dict(saved_state)
-        # state = model.state_dict()
+        # state = tsfm.state_dict()
         # for k in state:
         #     if k.startswith('decoder.pos_query_emb_m'):
         #         continue
         #     if k in saved_state:
         #         state[k] = saved_state[k]
-        # model.load_state_dict(state)
+        # tsfm.load_state_dict(state)
     for i in range(5000):
         n_smp = latest_version + 1 + i
         ts = time.time()

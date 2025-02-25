@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from model import base, pe, tsfm, enc
+from tsfm import base, pe, transformer, enc
 from detr.config import n_cls
 
 
@@ -23,12 +23,12 @@ class DetrDecoder(nn.Module):
         dk = d_cont + 2 * d_src_coord_emb
         for i in range(n_dec_layer):
 
-            ca_layer = tsfm.AttnLayer(dq, dk, dk, n_head)
+            ca_layer = tsfm.Block(dq, dk, dk, n_head)
             self.ca_layers.append(ca_layer)
 
             if i < n_dec_layer:
 
-                sa_layer = tsfm.AttnLayer(dq, dq, dk, n_head)
+                sa_layer = tsfm.Block(dq, dq, dk, n_head)
                 self.sa_layers.append(sa_layer)
 
         self.anchor_shift_reg = base.MLP(dk, dk * 2, 4, 2)

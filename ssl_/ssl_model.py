@@ -1,14 +1,14 @@
 import torch
 import torch.nn.functional as F
-from model import enc, base
+from tsfm import enc, base
 from torch import nn
 from common.config import num_grid, patch_size
 
 
 class SSL(nn.Module):
-    def __init__(self, d_cont, d_coord_emb, d_head, n_enc_layer):
+    def __init__(self, d_cont, dmodel, d_head, n_enc_layer):
         super().__init__()
-        self.encoder = enc.Encoder(n_enc_layer, d_cont, d_head, d_coord_emb, pretrain=True)
+        self.encoder = enc.Encoder(n_enc_layer, dmodel, d_head, pretrain=True)
         self.ln = nn.LayerNorm(d_cont)
         self.reg = base.MLP(d_cont, d_cont * 4, 3 * patch_size ** 2, 2)
 

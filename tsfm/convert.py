@@ -1,6 +1,6 @@
 import sys
 sys.path.append('..')
-from model import enc
+from tsfm import enc
 from common.config import device_type, model_save_dir
 import torch
 from ssl_ import ssl_model

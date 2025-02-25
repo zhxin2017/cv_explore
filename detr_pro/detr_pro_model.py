@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import sys
 
 sys.path.append('..')
-from model import base, pe, tsfm
+from tsfm import base, pe, transformer
 from detr_pro import assist
 from detr.config import n_cls, n_pos_query
 from common.config import max_grid_h, max_grid_w, patch_size, max_img_len
@@ -34,7 +34,7 @@ class DetrEncoder(nn.Module):
         self.n_enc_layer = n_enc_layer
         self.enc_layers = nn.ModuleList()
         for i in range(n_enc_layer):
-            self.enc_layers.append(tsfm.AttnLayer(dmodel, dmodel, dmodel, n_head))
+            self.enc_layers.append(tsfm.Block(dmodel, dmodel, dmodel, n_head))
         self.pretrain = pretrain
         if pretrain:
             self.next_token_emb_m = pe.Embedding1D(1, dmodel)
@@ -91,11 +91,11 @@ class DetrDecoder(nn.Module):
 
         for i in range(n_dec_layer):
 
-            ca_layer = tsfm.AttnLayer(dmodel, dmodel, dmodel, n_head)
+            ca_layer = tsfm.Block(dmodel, dmodel, dmodel, n_head)
             self.ca_layers.append(ca_layer)
 
             if i < n_dec_layer:
-                sa_layer = tsfm.AttnLayer(dmodel, dmodel, dmodel, n_head)
+                sa_layer = tsfm.Block(dmodel, dmodel, dmodel, n_head)
                 self.sa_layers.append(sa_layer)
 
         self.cls_reg = nn.Linear(dmodel, n_cls, bias=False)
