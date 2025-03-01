@@ -1,7 +1,7 @@
 from torch import nn
 import torch
+from tsfm import base
 import torch.nn.functional as F
-from tsfm import base, pe
 from common.config import max_grid_h, max_grid_w
 
 
@@ -33,41 +33,41 @@ class MHA(nn.Module):
 
         q = q.view(b, lq, self.n_head, self.dhead).transpose(1, 2)
         k = k.view(b, lv, self.n_head, self.dhead).transpose(1, 2)
-        attn = attention(q, k, mask)
+        v = v.view(b, lv, self.n_head, self.dhead).transpose(1, 2)
 
-        v = v.view(b, lv, self.n_head, -1).transpose(1, 2)
+        attn = attention(q, k, mask)
         v = attn @ v
         v = v.transpose(1, 2).contiguous().view(b, lq, -1)
         return v
 
 
-class Block(nn.Module):
+class TsfmLayer(nn.Module):
     def __init__(self, dmodel, dhead):
         super().__init__()
         self.dmodel = dmodel
         self.dhead = dhead
-        self.mha_ln = nn.LayerNorm(dmodel)
+        self.ln_q = nn.LayerNorm(dmodel)
+        self.ln_k = nn.LayerNorm(dmodel)
+        self.ln_v = nn.LayerNorm(dmodel)
         self.mha = MHA(dmodel, dhead)
 
-        self.ffn_ln = nn.LayerNorm(dmodel)
+        self.ln_ffn = nn.LayerNorm(dmodel)
         self.ffn = base.FFN(dmodel)
 
     def forward(self, q, k, v, mask=None):
-        q = self.mha_ln(q)
-        k = self.mha_ln(k)
-        v = self.mha_ln(v)
-
+        q = self.ln_q(q)
+        k = self.ln_k(k)
+        v = self.ln_v(v)
         q = q + self.mha(q, k, v, mask)
-        q = q + self.ffn(self.ffn_ln(q))
+        q = q + self.ffn(self.ln_ffn(q))
         return q
 
 
-class Encoder2D(nn.Module):
+class Encoder(nn.Module):
     def __init__(self, nlayer, dmodel, dhead, patch_size):
         super().__init__()
+        self.proj = nn.Linear(patch_size * patch_size * 3, dmodel)
 
-        self.cnn = nn.Conv2d(3, dmodel, (patch_size, patch_size),
-                             stride=(patch_size, patch_size))
         self.ln = nn.LayerNorm(dmodel)
         self.dmodel = dmodel
 
@@ -77,24 +77,20 @@ class Encoder2D(nn.Module):
         self.n_enc_layer = nlayer
         self.enc_layers = nn.ModuleList()
         for i in range(nlayer):
-            self.enc_layers.append(Block(dmodel, dhead))
+            self.enc_layers.append(TsfmLayer(dmodel, dhead))
 
     def forward(self, x, x_shift=0, y_shift=0, mask=None):
-        x = F.relu(self.cnn(x))
-        x = x.permute([0, 2, 3, 1])
-        x = self.ln(x)
-
-        b, h, w, c = x.shape
-        num_grid = h * w
-        y_indices = torch.arange(h, device=x.device) + y_shift
-        x_indices = torch.arange(w, device=x.device) + x_shift
-        pos_y_emb = (self.pos_y_emb_m(y_indices).view(1, h, 1, self.dmodel).
-                     repeat(b, 1, w, 1).view(b, num_grid, self.dmodel))
-        pos_x_emb = (self.pos_x_emb_m(x_indices).view(1, 1, w, self.dmodel).
-                     repeat(b, h, 1, 1).view(b, num_grid, self.dmodel))
+        b, patch_h, patch_w, c = x.shape
+        num_patch = patch_h * patch_w
+        x = x.view(b, num_patch, c)
+        x = self.proj(x)
+        y_indices = torch.arange(patch_h, device=x.device) + y_shift
+        x_indices = torch.arange(patch_w, device=x.device) + x_shift
+        pos_y_emb = (self.pos_y_emb_m(y_indices).view(1, patch_h, 1, self.dmodel).
+                     repeat(b, 1, patch_w, 1).view(b, num_patch, self.dmodel))
+        pos_x_emb = (self.pos_x_emb_m(x_indices).view(1, 1, patch_w, self.dmodel).
+                     repeat(b, patch_h, 1, 1).view(b, num_patch, self.dmodel))
         pos_emb = pos_y_emb + pos_x_emb
-        x = x.view(b, num_grid, -1)
-
         x = x + pos_emb
 
         for enc_layer in self.enc_layers:
@@ -102,58 +98,8 @@ class Encoder2D(nn.Module):
         return x, pos_emb
 
 
-class Encoder(nn.Module):
-    def __init__(self, n_enc_layer, dmodel, dhead, patch_size, pretrain=False):
-        super().__init__()
-
-        self.cnn = nn.Conv2d(3, dmodel, (patch_size, patch_size),
-                             stride=(patch_size, patch_size))
-        self.ln = nn.LayerNorm(dmodel)
-        self.dmodel = dmodel
-
-        self.pos_y_emb_m = nn.Embedding(max_grid_h, dmodel)
-        self.pos_x_emb_m = nn.Embedding(max_grid_w, dmodel)
-
-        self.n_enc_layer = n_enc_layer
-        self.enc_layers = nn.ModuleList()
-        for i in range(n_enc_layer):
-            self.enc_layers.append(Block(dmodel, dhead))
-        self.pretrain = pretrain
-        if pretrain:
-            self.next_token_emb_m = pe.Embedding1D(1, dmodel)
-
-    def forward(self, x, x_shift=0, y_shift=0, mask=None):
-        x = F.relu(self.cnn(x))
-        x = x.permute([0, 2, 3, 1])
-        x = self.ln(x)
-
-        b, h, w, c = x.shape
-        num_grid = h * w
-        y_indices = torch.arange(h, device=x.device) + y_shift
-        x_indices = torch.arange(w, device=x.device) + x_shift
-        pos_y_emb = (self.pos_y_emb_m(y_indices).view(1, h, 1, self.dmodel).
-                     repeat(b, 1, w, 1).view(b, num_grid, self.dmodel))
-        pos_x_emb = (self.pos_x_emb_m(x_indices).view(1, 1, w, self.dmodel).
-                     repeat(b, h, 1, 1).view(b, num_grid, self.dmodel))
-        pos_emb = self.ln(pos_y_emb + pos_x_emb)
-        x = x.view(b, num_grid, -1)
-
-        if self.pretrain:
-            next_token_emb = self.ln(self.next_token_emb_m(x).repeat(1, num_grid, 1))
-            x = torch.concat([x, next_token_emb], dim=1)
-            pos_emb = torch.concat([pos_emb, pos_emb], dim=1)
-            mask_11 = torch.tril(torch.ones([num_grid, num_grid], device=x.device))
-            mask_12 = torch.diag(torch.ones([num_grid - 1], device=x.device), diagonal=1)
-            mask_21 = torch.tril(torch.ones([num_grid, num_grid], device=x.device), diagonal=-1)
-            mask_22 = torch.diag(torch.ones([num_grid], device=x.device))
-            mask_1 = torch.concat([mask_11, mask_12], dim=-1)
-            mask_2 = torch.concat([mask_21, mask_22], dim=-1)
-            mask = torch.concat([mask_1, mask_2], dim=0)  # 2 * num_grid, 2 * num_grid
-        else:
-            mask = mask
-
-        x = x + pos_emb
-
-        for enc_layer in self.enc_layers:
-            x = enc_layer(x, x, x, x, mask)
-        return x, pos_emb
+if __name__ == '__main__':
+    encoder = Encoder(4, 64, 8, 16)
+    imgs = torch.randn(1, 3, 256, 256)
+    x, pos_emb = encoder(imgs)
+    print(x.shape)
