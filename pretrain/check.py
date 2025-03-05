@@ -1,6 +1,5 @@
 import torch
-from pretrain.pretrain_model import NextTokenPredictor
-from common.config import model_save_dir, device_type, patch_size
+from common.config import device_type, patch_size
 from image import image_util
 from common.config import img_size, patch_size
 import random

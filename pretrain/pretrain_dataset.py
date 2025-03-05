@@ -26,8 +26,11 @@ class PretrainDataset(Dataset):
         patches = image_util.to_patches(img_padded, patch_size).astype(np.float32)
         num_patches = patches.shape[0] * patches.shape[1]
         next_token_idx = random.randint(1, num_patches - 1)
+        loss_mask = np.zeros([num_patches, 1], dtype=np.float32)
+        loss_mask[next_token_idx, 0] = 1
+
         attn_mask = image_util.mask_patches(patches, next_token_idx)
-        return patches, attn_mask, next_token_idx
+        return patches, attn_mask, next_token_idx, loss_mask
 
     def __len__(self):
         return len(self.img_paths)

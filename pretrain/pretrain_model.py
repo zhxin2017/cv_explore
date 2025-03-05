@@ -14,9 +14,9 @@ class NextTokenPredictor(nn.Module):
         self.linear2 = nn.Linear(dmodel * 4, patch_size ** 2 * 3)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, x, mask, next_token_idx):
-        x, _ = self.encoder(x, mask=mask)
-        x = self.linear1(x[:, next_token_idx])
+    def forward(self, x, mask):
+        x = self.encoder(x, mask=mask)
+        x = self.linear1(x)
         x = self.relu1(x)
         x = self.linear2(x)
         x = self.sigmoid(x)
