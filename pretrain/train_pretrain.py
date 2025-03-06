@@ -32,16 +32,16 @@ def train(num_epoch, log_file, output_dir):
     total_time = 0
     num_total_batch = 0
     for i in range(num_epoch):
-        for j, (patches, masks, next_token_indices, loss_mask) in enumerate(dl):
+        for j, (patches, masks, next_token_indices, next_token_mask) in enumerate(dl):
             batch_start_time = time.time()
             patches = patches.to(device)
             masks = masks.to(device)
-            loss_mask = loss_mask.to(device)
+            next_token_mask = next_token_mask.to(device)
             next_token_indices = next_token_indices.to(device)
-            patches_predict = model(patches, masks)
+            patches_predict = model(patches, masks, next_token_mask)
             b, patch_h, patch_w, c = patches.shape
             patches = patches.view(b, patch_h * patch_w, c)
-            loss = loss_fn(patches_predict, patches) * loss_mask
+            loss = loss_fn(patches_predict, patches) * next_token_mask.view(b, patch_h * patch_w, 1)
             loss = loss.mean() * patch_h * patch_w
             t = time.time()
             loss.backward()
@@ -88,9 +88,9 @@ if __name__ == '__main__':
     #     #     if k in saved_state:
     #     #         state[k] = saved_state[k]
     #     # tsfm.load_state_dict(state)
-    model_file = 'outputs/pretrain/pretrain_e4_i3600.pt'
-    saved_state = torch.load(model_file, map_location=device)
-    model.load_state_dict(saved_state)
+    # model_file = 'outputs/pretrain/pretrain_e4_i3600.pt'
+    # saved_state = torch.load(model_file, map_location=device)
+    # model.load_state_dict(saved_state)
     num_epoch = 200
     print(os.getcwd())
     now = datetime.strftime(datetime.now(), '%m%d%H%M%S')

@@ -70,14 +70,14 @@ class Encoder(nn.Module):
 
         self.ln = nn.LayerNorm(dmodel)
         self.dmodel = dmodel
-
+        self.dhead = dhead
         self.pos_y_emb_m = nn.Embedding(max_grid_h, dmodel)
         self.pos_x_emb_m = nn.Embedding(max_grid_w, dmodel)
 
         self.n_enc_layer = nlayer
         self.enc_layers = nn.ModuleList()
         for i in range(nlayer):
-            self.enc_layers.append(TsfmLayer(dmodel, dhead))
+            self.enc_layers.append(TsfmLayer(dmodel, self.dhead))
 
     def forward(self, x, x_shift=0, y_shift=0, mask=None):
         b, patch_h, patch_w, c = x.shape
@@ -95,11 +95,11 @@ class Encoder(nn.Module):
 
         for enc_layer in self.enc_layers:
             x = enc_layer(x, x, x, mask)
-        return x, pos_emb
+        return x
 
 
 if __name__ == '__main__':
     encoder = Encoder(4, 64, 8, 16)
     imgs = torch.randn(1, 3, 256, 256)
-    x, pos_emb = encoder(imgs)
+    x = encoder(imgs)
     print(x.shape)
