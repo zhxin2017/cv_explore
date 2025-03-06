@@ -7,6 +7,8 @@ from detr import anno, detr_dataset, detr_model_base, match, eval
 from common.config import train_annotation_file, train_img_od_dict_file, img_size, \
     train_base_bsz, model_save_dir, model_save_stride, device_type
 from detr.config import loss_weights, n_query
+from common.config import patch_size
+from tsfm import transformer
 import focalloss
 import time
 import numpy as np
@@ -18,6 +20,10 @@ device = torch.device(device_type)
 
 model = detr_model_base.DETR(d_cont=384, d_enc_coord_emb=64, d_head=64, n_enc_layer=20, n_dec_layer=8, n_query=n_query)
 model.to(device)
+
+def freeze_params():
+    for param in model.parameters():
+        param.requires_grad = False
 
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
 
@@ -92,23 +98,19 @@ def train(epoch, batch_size, population, num_sample, weight_recover=0.5, gamma=4
 
 
 if __name__ == '__main__':
-    model_files = os.listdir(model_save_dir)
-    model_files = [f for f in model_files if f.endswith('.pt') and f.startswith('od_base')]
-    if len(model_files) == 0:
-        model_path_old = None
-        latest_version = 0
-    else:
-        versions = [int(f.split('.')[0].split('_')[-1]) for f in model_files]
-        latest_version = max(versions)
-        model_path_old = f'{model_save_dir}/od_base_{latest_version}.pt'
-        saved_state = torch.load(model_path_old, map_location=device)
-        model.load_state_dict(saved_state)
-        # state = tsfm.state_dict()
-        # for k in state:
-        #     state[k] = saved_state[k]
-        # tsfm.load_state_dict(state)
+    pretrain_enc_model_file = 'outputs/pretrain/pretrain_e4_i3600.pt'
+    pretrain_enc_saved_states = torch.load(pretrain_enc_model_file, map_location=device)
+    dmodel=384
+    dhead=64
+    n_dec_base_enc_layer=18
+    base_enc = transformer.Encoder(n_dec_base_enc_layer, dmodel, dhead, patch_size)
+    base_enc_weights = base_enc.state_dict()
+    for k, v in pretrain_enc_saved_states.items():
+        if k.startswith('encoder.'):
+            base_enc_weights[k[len('encoder.'):]] = v
+    base_enc.load_state_dict(base_enc_weights)
+
     for i in range(500):
-        n_smp = latest_version + 1 + i
         ts = time.time()
         train(1, batch_size=train_base_bsz, population=1000, num_sample=n_smp, weight_recover=0, gamma=4)
         te = time.time()
