@@ -1,10 +1,11 @@
-from detr import anno, detr_dataset
+from detr import detr_dataset
 import torch
 # from tqdm import tqdm
 from torch.utils.data import DataLoader
 from common.config import train_annotation_file, train_img_od_dict_file
 from detr.config import cid_to_occurrence, n_cls
 from detr import anchor
+from detr.dataset import anno
 
 n_query = len(anchor.generate_anchors())
 

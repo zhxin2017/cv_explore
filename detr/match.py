@@ -4,7 +4,7 @@ import scipy
 import torchvision.ops
 
 
-def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask, anchors=None):
+def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask):
     B, N, C = boxes_gt.shape
     if len(boxes_pred.shape) == 2:
         boxes_pred = boxes_pred.unsqueeze(0).repeat(B, 1, 1)
@@ -22,15 +22,9 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask, anchors=N
             cids_gt_ = cids_gt[i, :n_pos[i]].view(1, n_pos[i]).expand(N, n_pos[i]).contiguous().view(-1)
             cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred_, cids_gt_).view(N, n_pos[i])
 
-            if anchors is not None:
-                anchors_ = anchors.view(N // 6, 1, C).repeat(6, n_pos[i], 1)
-                iouloss_anchor = torchvision.ops.distance_box_iou_loss(anchors_, boxes_gt_)
-            else:
-                iouloss_anchor = 0
-
             # print(iouloss.mean(), cls_loss.mean())
 
-            total_loss = iouloss + iouloss_anchor + cls_loss
+            total_loss = iouloss + cls_loss
         # total_loss[total_loss == torch.nan] = 1e8
         row_, col_ = scipy.optimize.linear_sum_assignment(total_loss.detach().cpu().numpy())
         col_ = col_.tolist()

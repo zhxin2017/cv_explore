@@ -1,89 +1,115 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from tsfm import base, pe, transformer, enc
-from detr.config import n_cls
+from tsfm import base, transformer
+
+
+class DetrEncoder(nn.Module):
+    def __init__(self, nlayer, dmodel, dhead, h, w):
+        super().__init__()
+        self.cnn1 = nn.Conv2d(3, dmodel, kernel_size=4, stride=4)
+        self.relu1 = nn.ReLU()
+        self.cnn_ln1 = nn.LayerNorm(dmodel)
+        self.cnn2 = nn.Conv2d(dmodel, dmodel, kernel_size=4, stride=4)
+        self.relu2 = nn.ReLU()
+        self.ln = nn.LayerNorm(dmodel)
+        self.proj = nn.Linear(dmodel, dmodel)
+        self.dmodel = dmodel
+        self.dhead = dhead
+        self.pos_y_emb_m = nn.Embedding(h, dmodel)
+        self.pos_x_emb_m = nn.Embedding(w, dmodel)
+
+        self.n_enc_layer = nlayer
+        self.enc_layers = nn.ModuleList()
+        for i in range(nlayer):
+            self.enc_layers.append(transformer.TsfmLayer(dmodel, dhead))
+
+    def forward(self, x, x_shift=0, y_shift=0, mask=None):
+        x = torch.permute(x, [0, 3, 1, 2])
+        x = self.cnn1(x)
+        x = self.relu1(x)
+        x = torch.permute(x, [0, 2, 3, 1])
+        x = self.cnn_ln1(x)
+        x = torch.permute(x, [0, 3, 1, 2])
+        x = self.cnn2(x)
+        x = self.relu2(x)
+        x = torch.permute(x, [0, 2, 3, 1])
+
+        n, h, w, c = x.shape
+        seq_len = h * w
+        x = x.view(n, seq_len, c)
+        y_indices = torch.arange(h, device=x.device) + y_shift
+        x_indices = torch.arange(w, device=x.device) + x_shift
+        pos_y_emb = (self.pos_y_emb_m(y_indices).view(1, h, 1, self.dmodel).
+                     repeat(n, 1, w, 1).view(n, seq_len, self.dmodel))
+        pos_x_emb = (self.pos_x_emb_m(x_indices).view(1, 1, w, self.dmodel).
+                     repeat(n, h, 1, 1).view(n, seq_len, self.dmodel))
+        pos_emb = pos_y_emb + pos_x_emb
+        x = x + pos_emb
+
+        for enc_layer in self.enc_layers:
+            x = enc_layer(x, x, x, mask)
+        return x
 
 
 class DetrDecoder(nn.Module):
-    def __init__(self, n_dec_layer, d_cont, d_head, d_src_coord_emb, d_tgt_coord_emb):
+    def __init__(self, n_dec_layer, dmodel, dhead, num_query, num_classes):
         super().__init__()
         self.n_dec_layer = n_dec_layer
-        self.d_src_coord_emb = d_src_coord_emb
-        self.dec_pos_emb_m = pe.Sinusoidal(d_tgt_coord_emb)
-        self.dec_anchor_cls_emb_m = pe.Embedding1D(6, d_cont)
-        self.src_ln = nn.LayerNorm(d_cont)
+        self.num_query = num_query
+
+        self.query_emb_m = nn.Embedding(num_query, dmodel)
 
         self.ca_layers = nn.ModuleList()
         self.sa_layers = nn.ModuleList()
 
-        dq = d_cont + 4 * d_tgt_coord_emb
-
-        n_head = dq // d_head
-        dk = d_cont + 2 * d_src_coord_emb
         for i in range(n_dec_layer):
-
-            ca_layer = tsfm.Block(dq, dk, dk, n_head)
+            ca_layer = transformer.TsfmLayer(dmodel, dhead)
             self.ca_layers.append(ca_layer)
+            sa_layer = transformer.TsfmLayer(dmodel, dhead)
+            self.sa_layers.append(sa_layer)
 
-            if i < n_dec_layer:
+        self.box_linear1 = nn.Linear(dmodel, dmodel // 2)
+        self.box_relu = nn.ReLU()
+        self.box_linear2 = nn.Linear(dmodel // 2, 4)
+        self.box_sigmoid = nn.Sigmoid()
+        self.cls_linear = nn.Linear(dmodel, num_classes)
 
-                sa_layer = tsfm.Block(dq, dq, dk, n_head)
-                self.sa_layers.append(sa_layer)
-
-        self.anchor_shift_reg = base.MLP(dk, dk * 2, 4, 2)
-        self.out_ln = nn.LayerNorm(dk)
-        self.cls_reg = nn.Linear(dk, n_cls, bias=False)
-
-    def forward(self, src, src_pos_emb, anchors_pos):
-        B = src.shape[0]
-        n_anchor_pos = anchors_pos.shape[0]
-        anchors_pos = anchors_pos.view(1, n_anchor_pos, 1, -1).repeat(B, 1, 6, 1).reshape(B, n_anchor_pos * 6, -1)
-        anchors_pos_emb = self.dec_pos_emb_m(anchors_pos)
-        anchors_cls_emb = self.dec_anchor_cls_emb_m(src).view(B, 1, 6, -1).repeat(1, n_anchor_pos, 1, 1)\
-            .reshape(B, n_anchor_pos * 6, -1)
-        q = torch.concat([anchors_cls_emb, anchors_pos_emb], dim=-1)
-        src_with_pos = torch.concat([self.src_ln(src), src_pos_emb], dim=-1)
+    def forward(self, src):
+        n = src.shape[0]
+        query_emb = self.query_emb_m(torch.arange(self.num_query, device=src.device))
+        q = query_emb.view(1, self.num_query, -1).repeat(n, 1, 1)
 
         for i in range(self.n_dec_layer):
 
-            q = self.ca_layers[i](q, src_with_pos, src_with_pos, q)
+            q = self.ca_layers[i](q, src, src)
+            q = self.sa_layers[i](q, q, q)
 
-            if i < self.n_dec_layer - 1:
-                q = self.sa_layers[i](q, q, q, q)
-
-        anchor_shift = F.tanh(self.anchor_shift_reg(self.out_ln(q))) / 3
-        boxes = anchors_pos + anchor_shift
-        cls_logits = self.cls_reg(self.out_ln(q))
+        boxes = self.box_linear1(q)
+        boxes = self.box_relu(boxes)
+        boxes = self.box_linear2(boxes)
+        boxes = self.box_sigmoid(boxes)
+        cls_logits = self.cls_linear(q)
         return boxes, cls_logits
 
 
 class DETR(nn.Module):
 
-    def __init__(self, d_cont, d_head, d_enc_coord_emb, d_dec_coord_emb, n_enc_layer, n_dec_layer,
-                 exam_diff=True):
+    def __init__(self, dmodel, dhead, h, w, n_enc_layer, n_dec_layer, num_query, num_classes):
         super().__init__()
-        self.encoder = enc.Encoder(n_enc_layer, d_cont, d_head, d_enc_coord_emb)
-        self.decoder = DetrDecoder(n_dec_layer, d_cont, d_head, d_enc_coord_emb, d_dec_coord_emb)
-        self.exam_diff = exam_diff
+        self.encoder = DetrEncoder(n_enc_layer, dmodel, dhead, h, w)
+        self.decoder = DetrDecoder(n_dec_layer, dmodel, dhead, num_query, num_classes)
 
-    def forward(self, x, anchors):
-
-        src, src_pos_emb = self.encoder(x)
-
-        boxes, cls_logits = self.decoder(src, src_pos_emb, anchors)
-
-        if self.exam_diff and x.shape[0] > 1:
-            enc_diff = (src[0] - src[1]).abs().mean().item()
-            logits_diff = (cls_logits[0] - cls_logits[1]).abs().mean().item()
-        else:
-            enc_diff = 0
-            logits_diff = 0
-
-        return boxes, cls_logits, enc_diff, logits_diff
-
+    def forward(self, x):
+        src = self.encoder(x)
+        boxes, cls_logits = self.decoder(src)
+        return boxes, cls_logits
 
 if __name__ == '__main__':
-    device = torch.device('mps')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     B = 2
-    imgs = torch.rand([B, 3, 512, 512], device=device)
+    imgs = torch.rand([B, 288, 512, 3])
+    detr = DETR(dmodel=256, dhead=8, h=18, w=32, n_enc_layer=6, n_dec_layer=6, num_query=100, num_classes=91)
+    boxes, cls_logits = detr(imgs)  
+    print(boxes.shape)
+    print(cls_logits.shape)

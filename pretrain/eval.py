@@ -1,4 +1,4 @@
-from image import image_util
+from dataset import image_util
 from common.config import img_size, patch_size
 import numpy as np
 import torch

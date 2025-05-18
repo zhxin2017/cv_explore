@@ -1,6 +1,6 @@
 import torch
 from common.config import device_type, patch_size
-from image import image_util
+from dataset import image_util
 from common.config import img_size, patch_size
 import random
 import numpy as np

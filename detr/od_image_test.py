@@ -1,6 +1,6 @@
 import torch
 
-from detr import od_image
+from dataset import voc
 from common import image, config
 import torchvision
 
@@ -30,7 +30,7 @@ plt.pause(0)
 '''
 
 # test patchify
-img = od_image.read_img_by_id(img_id, img_dir)
+img = voc.read_img_by_id(img_id, img_dir)
 img, _, _ = image.pad_img(img, channel_first=True)
 c, h, w = img.shape
 img = img.view([1, c, h, w])
