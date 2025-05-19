@@ -18,13 +18,14 @@ def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask):
             boxes_gt_ = boxes_gt[i, :n_pos[i]].view(1, n_pos[i], C).expand(N, n_pos[i], C)
             iouloss = torchvision.ops.distance_box_iou_loss(boxes_pred_, boxes_gt_)
 
-            cls_pred_ = cls_pred[i].view(N, 1, -1).repeat(1, n_pos[i], 1).contiguous().view(N * n_pos[i], -1)
-            cids_gt_ = cids_gt[i, :n_pos[i]].view(1, n_pos[i]).expand(N, n_pos[i]).contiguous().view(-1)
-            cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred_, cids_gt_).view(N, n_pos[i])
+            # cls_pred_ = cls_pred[i].view(N, 1, -1).repeat(1, n_pos[i], 1).contiguous().view(N * n_pos[i], -1)
+            # cids_gt_ = cids_gt[i, :n_pos[i]].view(1, n_pos[i]).expand(N, n_pos[i]).contiguous().view(-1)
+            # cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred_, cids_gt_).view(N, n_pos[i])
 
             # print(iouloss.mean(), cls_loss.mean())
 
-            total_loss = iouloss + cls_loss
+            # total_loss = iouloss + cls_loss
+            total_loss = iouloss
         # total_loss[total_loss == torch.nan] = 1e8
         row_, col_ = scipy.optimize.linear_sum_assignment(total_loss.detach().cpu().numpy())
         col_ = col_.tolist()
