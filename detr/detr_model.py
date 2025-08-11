@@ -2,29 +2,35 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from tsfm import base, transformer
+from config import downsample1, downsample2, img_h, img_w
+
+
+downsample = downsample1 * downsample2
+fm_h = img_h // downsample
+fm_w = img_w // downsample
 
 
 class DetrEncoder(nn.Module):
-    def __init__(self, nlayer, dmodel, dhead, h, w):
+    def __init__(self, nlayer, dmodel, dhead):
         super().__init__()
-        self.cnn1 = nn.Conv2d(3, dmodel, kernel_size=4, stride=4)
+        self.cnn1 = nn.Conv2d(3, dmodel, kernel_size=downsample1, stride=downsample1)
         self.relu1 = nn.ReLU()
         self.cnn_ln1 = nn.LayerNorm(dmodel)
-        self.cnn2 = nn.Conv2d(dmodel, dmodel, kernel_size=4, stride=4)
+        self.cnn2 = nn.Conv2d(dmodel, dmodel, kernel_size=downsample2, stride=downsample2)
         self.relu2 = nn.ReLU()
         self.ln = nn.LayerNorm(dmodel)
         self.proj = nn.Linear(dmodel, dmodel)
         self.dmodel = dmodel
         self.dhead = dhead
-        self.pos_y_emb_m = nn.Embedding(h, dmodel)
-        self.pos_x_emb_m = nn.Embedding(w, dmodel)
+        self.pos_y_emb_m = nn.Embedding(fm_h, dmodel)
+        self.pos_x_emb_m = nn.Embedding(fm_w, dmodel)
 
         self.n_enc_layer = nlayer
         self.enc_layers = nn.ModuleList()
         for i in range(nlayer):
             self.enc_layers.append(transformer.TsfmLayer(dmodel, dhead))
 
-    def forward(self, x, x_shift=0, y_shift=0, mask=None):
+    def forward(self, x, mask=None):
         x = torch.permute(x, [0, 3, 1, 2])
         x = self.cnn1(x)
         x = self.relu1(x)
@@ -95,9 +101,9 @@ class DetrDecoder(nn.Module):
 
 class DETR(nn.Module):
 
-    def __init__(self, dmodel, dhead, h, w, n_enc_layer, n_dec_layer, num_query, num_classes):
+    def __init__(self, dmodel, dhead, n_enc_layer, n_dec_layer, num_query, num_classes):
         super().__init__()
-        self.encoder = DetrEncoder(n_enc_layer, dmodel, dhead, h, w)
+        self.encoder = DetrEncoder(n_enc_layer, dmodel, dhead, fm_h, fm_w)
         self.decoder = DetrDecoder(n_dec_layer, dmodel, dhead, num_query, num_classes)
 
     def forward(self, x):
@@ -109,7 +115,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     B = 2
     imgs = torch.rand([B, 288, 512, 3])
-    detr = DETR(dmodel=256, dhead=8, h=18, w=32, n_enc_layer=6, n_dec_layer=6, num_query=100, num_classes=91)
+    detr = DETR(dmodel=256, dhead=8, n_enc_layer=6, n_dec_layer=6, num_query=100, num_classes=91)
     boxes, cls_logits = detr(imgs)  
     print(boxes.shape)
     print(cls_logits.shape)

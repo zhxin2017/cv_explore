@@ -8,6 +8,8 @@ img_w = 512
 
 
 # model
+downsample1 = 3
+downsample2 = 4
 dmodel = 256
 dhead = 32
 num_enc_layer = 20
