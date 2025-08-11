@@ -13,11 +13,9 @@ from torchvision.ops import distance_box_iou_loss
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-h = img_h // 16
-w = img_w // 16
 num_classes = len(voc_classes)
 
-detr = detr_model.DETR(dmodel, dhead, h, w, num_enc_layer, num_dec_layer, num_query, num_classes)
+detr = detr_model.DETR(dmodel, dhead, num_enc_layer, num_dec_layer, num_query, num_classes)
 
 def freeze_params(model):
     for param in model.parameters():
@@ -25,7 +23,7 @@ def freeze_params(model):
 
 optimizer = optim.Adam(detr.parameters(), lr=1e-5)
 # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-device = torch.device('mps')
+device = torch.device('cpu')
 
 detr.to(device)
 dataset = VocDataset(img_root_dir, xml_root_dir, filelist_files, [img_h, img_w])
@@ -53,9 +51,7 @@ def train_one_epoch(e):
             boxes_gt.append(boxes_per_img)
 
         cids_gt = torch.stack(cids_gt, dim=0)
-        print(cids_gt.shape)
         boxes_gt = torch.stack(boxes_gt, dim=0)
-        print(boxes_gt.shape)
         boxes_gt = boxes_gt / box_resize_factor
 
         boxes_pred, cls_logits = detr(imgs)

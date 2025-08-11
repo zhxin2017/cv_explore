@@ -44,8 +44,8 @@ class DetrEncoder(nn.Module):
         n, h, w, c = x.shape
         seq_len = h * w
         x = x.view(n, seq_len, c)
-        y_indices = torch.arange(h, device=x.device) + y_shift
-        x_indices = torch.arange(w, device=x.device) + x_shift
+        y_indices = torch.arange(h, device=x.device)
+        x_indices = torch.arange(w, device=x.device)
         pos_y_emb = (self.pos_y_emb_m(y_indices).view(1, h, 1, self.dmodel).
                      repeat(n, 1, w, 1).view(n, seq_len, self.dmodel))
         pos_x_emb = (self.pos_x_emb_m(x_indices).view(1, 1, w, self.dmodel).
@@ -103,7 +103,7 @@ class DETR(nn.Module):
 
     def __init__(self, dmodel, dhead, n_enc_layer, n_dec_layer, num_query, num_classes):
         super().__init__()
-        self.encoder = DetrEncoder(n_enc_layer, dmodel, dhead, fm_h, fm_w)
+        self.encoder = DetrEncoder(n_enc_layer, dmodel, dhead)
         self.decoder = DetrDecoder(n_dec_layer, dmodel, dhead, num_query, num_classes)
 
     def forward(self, x):
