@@ -3,13 +3,14 @@
 img_root_dir = '/Users/zx/Documents/dataset/VOCdevkit/VOC2012/JPEGImages'
 xml_root_dir = '/Users/zx/Documents/dataset//VOCdevkit/VOC2012/Annotations'
 filelist_files = ['/Users/zx/Documents/dataset/VOCdevkit/VOC2012/ImageSets/Main/train.txt']
-img_h = 288
-img_w = 512
+img_h = 360
+img_w = 480
 
 
 # model
-downsample1 = 3
-downsample2 = 4
+ds1 = 3
+ds2 = 4
+downsample_seg = 2
 dmodel = 256
 dhead = 32
 num_enc_layer = 20

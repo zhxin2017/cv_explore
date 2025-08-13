@@ -2,10 +2,10 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from tsfm import base, transformer
-from config import downsample1, downsample2, img_h, img_w
+from config import ds1, ds2, downsample_seg, img_h, img_w
 
 
-downsample = downsample1 * downsample2
+downsample = ds1 * ds2
 fm_h = img_h // downsample
 fm_w = img_w // downsample
 
@@ -13,10 +13,10 @@ fm_w = img_w // downsample
 class DetrEncoder(nn.Module):
     def __init__(self, nlayer, dmodel, dhead):
         super().__init__()
-        self.cnn1 = nn.Conv2d(3, dmodel, kernel_size=downsample1, stride=downsample1)
+        self.cnn1 = nn.Conv2d(3, dmodel, kernel_size=ds1, stride=ds1)
         self.relu1 = nn.ReLU()
         self.cnn_ln1 = nn.LayerNorm(dmodel)
-        self.cnn2 = nn.Conv2d(dmodel, dmodel, kernel_size=downsample2, stride=downsample2)
+        self.cnn2 = nn.Conv2d(dmodel, dmodel, kernel_size=ds2, stride=ds2)
         self.relu2 = nn.ReLU()
         self.ln = nn.LayerNorm(dmodel)
         self.proj = nn.Linear(dmodel, dmodel)
@@ -41,15 +41,15 @@ class DetrEncoder(nn.Module):
         x = self.relu2(x)
         x = torch.permute(x, [0, 2, 3, 1])
 
-        n, h, w, c = x.shape
-        seq_len = h * w
+        n, _, _, c = x.shape
+        seq_len = fm_h * fm_w
         x = x.view(n, seq_len, c)
-        y_indices = torch.arange(h, device=x.device)
-        x_indices = torch.arange(w, device=x.device)
-        pos_y_emb = (self.pos_y_emb_m(y_indices).view(1, h, 1, self.dmodel).
-                     repeat(n, 1, w, 1).view(n, seq_len, self.dmodel))
-        pos_x_emb = (self.pos_x_emb_m(x_indices).view(1, 1, w, self.dmodel).
-                     repeat(n, h, 1, 1).view(n, seq_len, self.dmodel))
+        y_indices = torch.arange(fm_h, device=x.device)
+        x_indices = torch.arange(fm_w, device=x.device)
+        pos_y_emb = (self.pos_y_emb_m(y_indices).view(1, fm_h, 1, self.dmodel).
+                     repeat(n, 1, fm_w, 1).view(n, seq_len, self.dmodel))
+        pos_x_emb = (self.pos_x_emb_m(x_indices).view(1, 1, fm_w, self.dmodel).
+                     repeat(n, fm_h, 1, 1).view(n, seq_len, self.dmodel))
         pos_emb = pos_y_emb + pos_x_emb
         x = x + pos_emb
 
