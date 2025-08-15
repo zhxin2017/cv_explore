@@ -4,27 +4,26 @@ import scipy
 import torchvision.ops
 
 
-def assign_query(boxes_gt, boxes_pred, cids_gt, cls_pred, gt_pos_mask):
-    B, N, C = boxes_gt.shape
-    if len(boxes_pred.shape) == 2:
-        boxes_pred = boxes_pred.unsqueeze(0).repeat(B, 1, 1)
+def assign_query(seg_gt_pos_mask, seg_pred_pos_mask, cids_gt, cls_pred, gt_pos_mask):
+    B, N, H, W, C = seg_gt_pos_mask.shape
     n_pos = gt_pos_mask.sum(dim=-1).view(B)
 
     rows = []
     cols = []
     for i in range(B):
         with torch.no_grad():
-            boxes_pred_ = boxes_pred[i].view(N, 1, C).expand(N, n_pos[i], C)
-            boxes_gt_ = boxes_gt[i, :n_pos[i]].view(1, n_pos[i], C).expand(N, n_pos[i], C)
-            iouloss = torchvision.ops.distance_box_iou_loss(boxes_pred_, boxes_gt_)
+            seg_gt_pos_mask_ = seg_gt_pos_mask[i].view(N, 1, H, W, C).expand(N, n_pos[i], H, W, C)
+            seg_pred_pos_mask_ = seg_pred_pos_mask[i].view(1, n_pos[i], H, W, C).expand(N, n_pos[i], H, W, C)
+            inter = torch.sum(seg_gt_pos_mask_ * seg_pred_pos_mask_, dim=(2, 3, 4))
+            union = torch.sum(seg_gt_pos_mask_, dim=(2, 3, 4)) + torch.sum(seg_pred_pos_mask_, dim=(2, 3, 4)) - inter
+            iou = inter / (union + 1e-5)
+            iou_loss = 1 - iou
 
             cls_pred_ = cls_pred[i].view(N, 1, -1).repeat(1, n_pos[i], 1).contiguous().view(N * n_pos[i], -1)
             cids_gt_ = cids_gt[i, :n_pos[i]].view(1, n_pos[i]).expand(N, n_pos[i]).contiguous().view(-1)
             cls_loss = nn.CrossEntropyLoss(reduction='none')(cls_pred_, cids_gt_).view(N, n_pos[i])
 
-            # print(iouloss.mean(), cls_loss.mean())
-
-            total_loss = iouloss + cls_loss
+            total_loss = iou_loss + cls_loss
         # total_loss[total_loss == torch.nan] = 1e8
         row_, col_ = scipy.optimize.linear_sum_assignment(total_loss.detach().cpu().numpy())
         col_ = col_.tolist()
