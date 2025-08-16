@@ -8,9 +8,9 @@ img_w = 480
 
 
 # model
-ds1 = 3
+ds1 = 4
 ds2 = 4
-downsample_seg = 2
+downsample_seg = 4
 dmodel = 256
 dhead = 32
 num_enc_layer = 20
