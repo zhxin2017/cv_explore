@@ -14,3 +14,11 @@ def eval_pred(cls_pred, cids_gt, query_pos_mask):
     f1 = 2 * prec * recall / (prec + recall)
     return accu, recall, f1, tp
 
+
+def eval_pred2(cls_pred, cids_gt):
+    eq = (cls_pred == cids_gt) * 1
+    tp_mask = eq * (cids_gt > 0)
+    tp = tp_mask.sum()
+    recall = tp / ((cids_gt > 0).sum() + 1e-5)
+    accu = eq.sum() / cls_pred.shape[0]
+    return accu, recall

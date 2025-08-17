@@ -15,8 +15,7 @@ dmodel = 256
 dhead = 32
 num_enc_layer = 20
 num_dec_layer = 8
-num_query = 300
-
+num_query = 128
 
 # train
 batch_size = 2

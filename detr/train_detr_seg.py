@@ -8,13 +8,14 @@ from data.voc import VocDataset, collate_fn
 import time
 from data.classes import voc_classes
 import numpy as np
-from torchvision.ops import distance_box_iou_loss
 from torch.utils.data import DataLoader
-from torchvision import transforms
 
 num_classes = len(voc_classes)
 
 detr = detr_seg_model.DETR(dmodel, dhead, num_enc_layer, num_dec_layer, num_query, num_classes)
+
+ckpt = 'detr_seg_epoch_2_batch_1000.pt'
+detr.load_state_dict(torch.load(ckpt, map_location='cpu'))
 
 def freeze_params(model):
     for param in model.parameters():
@@ -30,8 +31,6 @@ dataloader = DataLoader(dataset, batch_size, shuffle=True, collate_fn=collate_fn
 
 loss_fn = torch.nn.CrossEntropyLoss(reduction='none').to(device)
 
-box_resize_factor = torch.tensor([img_w, img_h, img_w, img_h], device=device)
-box_resize_factor = box_resize_factor.view([1, 1, 4])
 def train_one_epoch(e):
     for j, (imgs, targets) in enumerate(dataloader):
         imgs = imgs.to(device)
@@ -104,8 +103,7 @@ def train_one_epoch(e):
         pos_sum = torch.sum(seg_prob[..., 1:] * seg_gt_pos_mask) / (torch.sum(seg_gt_pos_mask) + 1e-5)
         pos_sum_loss = 1 - pos_sum
 
-        # cls_pred = seg_logits.argmax(dim=-1)
-        # accu, recall, f1, n_tp = eval.eval_pred(cls_pred, cids_gt, query_pos_mask)
+        accu, recall = eval.eval_pred2(seg_prob.argmax(dim=-1), cids_gt)
         loss = cls_loss + pos_sum_loss + overlapping_loss
 
         optimizer.zero_grad()
@@ -115,12 +113,15 @@ def train_one_epoch(e):
         # nn.utils.clip_grad_value_(tsfm.parameters(), 0.05)
         optimizer.step()
 
-        print(f'|epoch {e + 1}/{epoch}|batch {j}|'
+        print(f'|epoch {e + 1}/{epoch}|batch {j + 1}|'
                 f'cl {cls_loss.detach().item():.3f}|'
                 f'sl {pos_sum_loss.detach().item():.3f}|'
                 f'ol {overlapping_loss.detach().item():.3f}|'
-                # f'ac {accu:.3f}|rc {recall:.3f}: {n_tp}/{n_pos}|'
+                f'ac {accu:.3f}|rc {recall:.3f}|'
                 )
+        if (j + 1) % 500 == 0:
+            torch.save(detr.state_dict(), f'detr_seg_epoch_{e + 1}_batch_{j + 1}.pt')
+            print(f'saved detr_seg_epoch_{e + 1}_batch_{j + 1}.pt')
 
 
 if __name__ == '__main__':
