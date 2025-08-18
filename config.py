@@ -1,8 +1,8 @@
 
 # dataset
-img_root_dir = '/Users/zx/Documents/dataset/VOCdevkit/VOC2012/JPEGImages'
-xml_root_dir = '/Users/zx/Documents/dataset//VOCdevkit/VOC2012/Annotations'
-filelist_files = ['/Users/zx/Documents/dataset/VOCdevkit/VOC2012/ImageSets/Main/train.txt']
+img_root_dir = '/Users/zx/Documents/dataset/VOC2012/JPEGImages'
+xml_root_dir = '/Users/zx/Documents/dataset/VOC2012/Annotations'
+filelist_files = ['/Users/zx/Documents/dataset/VOC2012/ImageSets/Main/train2017.txt']
 img_h = 360
 img_w = 480
 

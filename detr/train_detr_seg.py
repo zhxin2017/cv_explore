@@ -14,7 +14,7 @@ num_classes = len(voc_classes)
 
 detr = detr_seg_model.DETR(dmodel, dhead, num_enc_layer, num_dec_layer, num_query, num_classes)
 
-ckpt = 'detr_seg_epoch_2_batch_1000.pt'
+ckpt = 'detr_seg_epoch_1_batch_7000.pt'
 detr.load_state_dict(torch.load(ckpt, map_location='cpu'))
 
 def freeze_params(model):
@@ -80,9 +80,11 @@ def train_one_epoch(e):
 
         seg_prob = torch.softmax(seg_logits, dim=-1)
         # overlapping loss
-        overlapping_mask = (torch.sum(seg_gt_pos_mask, dim=1, keepdim=True) > 1) * 1
-        overlapping_loss = (torch.sum(seg_prob * overlapping_mask, dim=1) - 1)**2
-        overlapping_loss = torch.sum(overlapping_loss) / (torch.sum(overlapping_mask) + 1e-5) / num_query
+        overlaping_mask = (torch.sum(seg_pred_pos_mask, dim=1) > 1) * 1
+        overlapping_sum = torch.sum(seg_prob[..., 1:], dim=1)
+        overlapping_sum = torch.sum(overlapping_sum, dim=3, keepdim=True)
+        overlapping_sum = overlapping_sum * overlaping_mask
+        overlapping_loss = torch.sum(overlapping_sum) / (torch.sum(overlaping_mask) + 1e-5)
         
         # cls loss
         seg_gt_pos_mask = seg_gt_pos_mask[(gt_matched_indices_batch, gt_matched_indices_query)]
@@ -119,7 +121,7 @@ def train_one_epoch(e):
                 f'ol {overlapping_loss.detach().item():.3f}|'
                 f'ac {accu:.3f}|rc {recall:.3f}|'
                 )
-        if (j + 1) % 500 == 0:
+        if (j + 1) % 1000 == 0:
             torch.save(detr.state_dict(), f'detr_seg_epoch_{e + 1}_batch_{j + 1}.pt')
             print(f'saved detr_seg_epoch_{e + 1}_batch_{j + 1}.pt')
 
