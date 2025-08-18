@@ -16,6 +16,8 @@ def parse_xml(xml_path, category_to_idx):
     cids = []
     for obj in objs:
         name = obj.find('name').text
+        if name not in category_to_idx:
+            continue
         idx = category_to_idx[name]
         bbox = obj.find('bndbox')
         xmin = float(bbox.find('xmin').text)
@@ -47,7 +49,8 @@ def pad_img_and_boxes(img, boxes, dst_h, dst_w):
     x_offset = random.randint(0, dst_w - w_)
     y_offset = random.randint(0, dst_h - h_)
     img = cv2.resize(img, (w_, h_))
-    boxes = boxes * scale + np.array([[x_offset, y_offset, x_offset, y_offset]])
+    if len(boxes) > 0:
+        boxes = boxes * scale + np.array([[x_offset, y_offset, x_offset, y_offset]])
     canvas[y_offset:y_offset + h_, x_offset:x_offset + w_] = img
     return canvas, boxes
 

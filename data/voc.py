@@ -13,6 +13,7 @@ class VocDataset(Dataset):
                  filelist_files,
                  input_size):
         self.voc_name_to_idx = {name: idx for idx, name in enumerate(classes.voc_classes)}   
+        print(f'voc_name_to_idx: {self.voc_name_to_idx}')
         self.h, self.w = input_size
         
         self.filelist = []
