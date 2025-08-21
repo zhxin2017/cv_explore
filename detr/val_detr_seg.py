@@ -16,13 +16,13 @@ num_classes = len(voc_classes)
 
 detr = detr_seg_model.DETR(dmodel, dhead, num_enc_layer, num_dec_layer, num_query, num_classes)
 
-ckpt = 'detr_seg_epoch_2_batch_1000.pt'
+ckpt = 'detr_seg_epoch_1_batch_6000.pt'
 detr.load_state_dict(torch.load(ckpt, map_location='cpu'))
 
 device = torch.device('cpu')
 detr.to(device)
 
-val_filelist_files = ['/Users/zx/Documents/dataset/VOCdevkit/VOC2012/ImageSets/Main/train.txt']
+val_filelist_files = ['/Users/zx/Documents/dataset/VOC2012/ImageSets/Main/val2017.txt']
 
 dataset = VocDataset(img_root_dir, xml_root_dir, val_filelist_files, [img_h, img_w])
 dataloader = DataLoader(dataset, batch_size, shuffle=False, collate_fn=collate_fn)

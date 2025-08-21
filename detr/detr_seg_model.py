@@ -74,11 +74,14 @@ class DetrDecoder(nn.Module):
             self.ca_layers.append(ca_layer)
             sa_layer = transformer.TsfmLayer(dmodel, dhead)
             self.sa_layers.append(sa_layer)
+
+        self.seg_q_linear = nn.Linear(dmodel, dmodel)
+        self.seg_src_linear = nn.Linear(dmodel, dmodel)
         
         self.seg_h = img_h // downsample_seg
         self.seg_w = img_w // downsample_seg
         self.num_classes = num_classes
-        self.seg_linear = nn.Linear(dmodel, self.seg_h * self.seg_w * num_classes)
+        self.cls_linear = nn.Linear(dmodel, num_classes)
 
     def forward(self, src):
         n = src.shape[0]
@@ -89,10 +92,12 @@ class DetrDecoder(nn.Module):
 
             q = self.ca_layers[i](q, src, src)
             q = self.sa_layers[i](q, q, q)
-
-        seg_logits = self.seg_linear(q)
-        return seg_logits.view(n, self.num_query, self.seg_h, self.seg_w, self.num_classes)
-
+        q_seg = self.seg_q_linear(q)
+        src_seg = self.seg_src_linear(src)
+        
+        seg_logits = q_seg @ src_seg.transpose(-1, -2)
+        cls_logits = self.cls_linear(q)
+        return seg_logits, cls_logits
 
 class DETR(nn.Module):
 
@@ -103,8 +108,8 @@ class DETR(nn.Module):
 
     def forward(self, x):
         src = self.encoder(x)
-        seg_logits = self.decoder(src)
-        return seg_logits
+        seg_logits, cls_logits = self.decoder(src)
+        return seg_logits, cls_logits
         
 
 if __name__ == '__main__':
