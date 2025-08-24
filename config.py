@@ -8,15 +8,15 @@ img_w = 480
 
 
 # model
-ds1 = 4
+ds1 = 3
 ds2 = 4
 downsample_seg = 4
 dmodel = 256
 dhead = 32
-num_enc_layer = 20
+num_enc_layer = 24
 num_dec_layer = 8
 num_query = 128
 
 # train
-batch_size = 2
+batch_size = 1
 epoch = 300

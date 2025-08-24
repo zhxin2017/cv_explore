@@ -28,9 +28,12 @@ def assign_query(seg_gt, seg_pred, cids_gt, cls_logits, gt_pos_mask):
             inter = torch.sum(seg_gt_ * seg_pred_, dim=-1)
             union = torch.sum(seg_gt_ + seg_pred_, dim=-1) - inter
             iou_loss = 1 - (inter / (union + 1e-5))
-
-        total_loss = cls_loss + iou_loss
         
+        cls_loss_mean = cls_loss.mean()
+        iou_loss_mean = iou_loss.mean()
+        total_loss = iou_loss / (iou_loss_mean + 1e-5) + cls_loss / (cls_loss_mean + 1e-5)
+
+
         row_, col_ = scipy.optimize.linear_sum_assignment(total_loss.cpu().numpy())
         col_ = col_.tolist()
         row_ = row_.tolist()
