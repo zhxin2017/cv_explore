@@ -5,7 +5,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring, ElementTree
 
 coco_dir = '/Users/zx/Documents/dataset/coco'
 
-coco_classes_file = 'detr/dataset/coco-labels-91.txt'
+coco_classes_file = 'data/coco-labels-91.txt'
 with open(coco_classes_file, 'r') as f:
     coco_classes = [line.strip() for line in f.readlines()]
 
@@ -72,27 +72,28 @@ def load_anno(phase):
         image_name = image_id_to_name(img_id)
         shape = (d['shape'][0], d['shape'][1])
         objs = d['objs']
-        bboxes = [box[:4] for box in objs]
+        bboxes_xywh = [box[:4] for box in objs]
+        bboxes = [[box[0], box[1], box[0] + box[2], box[1] + box[3]] for box in bboxes_xywh]
         cids = [box[4] for box in objs]
         xml_str = to_xml(bboxes, cids, shape, image_name)
         xml_file = os.path.join(xml_dir, f'{image_name[:-4]}.xml')
         with open(xml_file, 'w') as f:
             f.write(xml_str)
 
-# load_anno('train')
-# load_anno('val')
+load_anno('train')
+load_anno('val')
 
 root_folder = '/Users/zx/Documents/dataset/VOC2012'
 anno_folder = os.path.join(root_folder, 'Annotations')
 
-# files = os.listdir(os.path.join(anno_folder, 'train2017'))
+files = os.listdir(os.path.join(anno_folder, 'train2017'))
 
-# filelist_file = os.path.join(root_folder, 'ImageSets', 'Main', 'train2017.txt')
+filelist_file = os.path.join(root_folder, 'ImageSets', 'Main', 'train2017.txt')
 
-# with open(filelist_file, 'w') as f:
-#     for file in files:
-#         if file.endswith('.xml'):
-#             f.write('train2017/' + file[:-4] + '\n')
+with open(filelist_file, 'w') as f:
+    for file in files:
+        if file.endswith('.xml'):
+            f.write('train2017/' + file[:-4] + '\n')
 
 files = os.listdir(os.path.join(anno_folder, 'val2017'))
 
