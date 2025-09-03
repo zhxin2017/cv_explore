@@ -21,10 +21,3 @@ elephant
 bear
 zebra
 giraffe
-umbrella
-tvmonitor
-laptop
-mouse
-remote
-keyboard
-toothbrush

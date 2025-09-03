@@ -68,6 +68,7 @@ class DetrDecoder(nn.Module):
 
         self.ca_layers = nn.ModuleList()
         self.sa_layers = nn.ModuleList()
+        self.dmodel = dmodel
 
         for i in range(n_dec_layer):
             ca_layer = transformer.TsfmLayer(dmodel, dhead)
@@ -93,9 +94,10 @@ class DetrDecoder(nn.Module):
             q = self.ca_layers[i](q, src, src)
             q = self.sa_layers[i](q, q, q)
         q_seg = self.seg_q_linear(q)
-        src_seg = self.seg_src_linear(src)
-        
-        seg_logits = q_seg @ src_seg.transpose(-1, -2)
+        src_seg = self.seg_src_linear(src).permute(0, 2, 1).view(n, self.dmodel, fm_h, fm_w)
+        src_seg = F.interpolate(src_seg, size=(img_h, img_w), mode='bilinear')
+        src_seg = src_seg.view(n, self.dmodel, img_h * img_w)
+        seg_logits = q_seg @ src_seg
         cls_logits = self.cls_linear(q)
         return seg_logits, cls_logits
 

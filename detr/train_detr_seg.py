@@ -11,13 +11,23 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 num_classes = len(voc_classes)
-ds = ds1 * ds2
-fm_h, fm_w = img_h // ds, img_w // ds
 
 detr = detr_seg_model.DETR(dmodel, dhead, num_enc_layer, num_dec_layer, num_query, num_classes)
 
-ckpt = 'detr_seg_epoch_1_batch_19000.pt'
-# detr.load_state_dict(torch.load(ckpt, map_location='cpu'))
+ckpt = 'detr_seg_epoch_1_batch_10500.pt'
+ckpt_wights = torch.load(ckpt, map_location='cpu')
+copy_weights = detr.state_dict()
+for k, v in copy_weights.items():
+    v_ckpt = ckpt_wights[k]
+    if v.shape != v_ckpt.shape:
+        if k.startswith('decoder.cls_linear'):
+            n = v.shape[0]
+            copy_weights[k] = v_ckpt[:n]
+        else:
+            continue
+    else:
+        copy_weights[k] = v_ckpt
+detr.load_state_dict(copy_weights)
 
 mean_celoss = float(np.log(num_classes))
 
@@ -25,13 +35,13 @@ def freeze_params(model):
     for param in model.parameters():
         param.requires_grad = False
 
-optimizer = optim.Adam(detr.parameters(), lr=1e-3 / batch_size)
+optimizer = optim.Adam(detr.parameters(), lr=1e-5 / batch_size)
 # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 device = torch.device('cpu')
 
 detr.to(device)
-# dataset = VocDataset(img_root_dir, xml_root_dir, filelist_files, [img_h, img_w])
-dataset = VocDataset(img_root_dir, xml_root_dir, ['minibatch.txt'], [img_h, img_w])
+dataset = VocDataset(img_root_dir, xml_root_dir, filelist_files, [img_h, img_w])
+# dataset = VocDataset(img_root_dir, xml_root_dir, ['minibatch.txt'], [img_h, img_w])
 dataloader = DataLoader(dataset, batch_size, shuffle=True, collate_fn=collate_fn)
 
 cross_entropy = torch.nn.CrossEntropyLoss(reduction='none').to(device)
@@ -65,13 +75,13 @@ def train_one_epoch(e):
 
         seg_pred = (seg_logits > 0) * 1
 
-        seg_gt = torch.zeros([batch_size, num_query, fm_h, fm_w], device=device)
+        seg_gt = torch.zeros([batch_size, num_query, img_h, img_w], device=device)
         for m in range(batch_size):
             for q in range(num_pos_cls[m]):
-                x1, y1, x2, y2 = boxes_gt[m, q] / ds
+                x1, y1, x2, y2 = boxes_gt[m, q]
                 x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
                 seg_gt[m, q, y1:y2, x1:x2] = 1
-        seg_gt = seg_gt.view(batch_size, num_query, fm_h * fm_w)
+        seg_gt = seg_gt.view(batch_size, num_query, img_h * img_w)
         rows, cols = match_seg.assign_query(seg_gt, seg_pred, cids_gt, cls_logits, gt_pos_mask)
         cols = torch.tensor(np.stack(cols), device=device)
 
@@ -86,7 +96,7 @@ def train_one_epoch(e):
         seg_pred = seg_pred * query_pos_mask
 
         # overlapping loss
-        num_grid = fm_h * fm_w
+        num_grid = img_h * img_w
         ovlp_mask = torch.sum(seg_pred, dim=1, keepdim=True) > 1 # shape(bsz, 1, fm_h * fm_w)
         ovlp_mask_sum = torch.sum(ovlp_mask, dim=(1, 2)).view(batch_size, 1)
         ovlp_sum = torch.sum(seg_prob * ovlp_mask, dim=1) # shape(bsz, fm_h * fm_w)
@@ -108,7 +118,7 @@ def train_one_epoch(e):
 
         # seg positive loss
         seg_pos_ratio = torch.sum(seg_prob.view(flat_dim, num_grid) * seg_gt) / (torch.sum(seg_gt) + 1e-5)
-        if seg_pos_ratio > 0.8:
+        if seg_pos_ratio > 0.6:
             seg_pos_loss = torch.tensor(0.0, device=device)
         else:
             seg_pos_loss = -torch.log(seg_pos_ratio + 1e-5)
@@ -124,13 +134,12 @@ def train_one_epoch(e):
         cls_logits = cls_logits.view(flat_dim, num_classes)
         cls_loss = cross_entropy(cls_logits, cids_gt)
         query_pos_mask = query_pos_mask.view(-1)
-        # print(cls_logits[query_pos_mask > 0])
-        cls_loss = cls_loss * (0.01 + query_pos_mask)
+        cls_loss = cls_loss * (0.05 + query_pos_mask)
         cls_loss = cls_loss.mean()
         cls_pred = torch.argmax(cls_logits, dim=-1)
         accu, recall, f1, tp = eval.eval_pred(cls_pred, cids_gt, query_pos_mask.view(-1))
         
-        loss = cls_loss / mean_celoss + seg_neg_loss + seg_pos_loss + ovlp_loss
+        loss = cls_loss + seg_neg_loss + seg_pos_loss + ovlp_loss
 
         optimizer.zero_grad()
         t = time.time()
@@ -147,7 +156,7 @@ def train_one_epoch(e):
                 f'iou {iou.item():.3f}|'
                 f'ac {accu:.3f}|rc {recall:.3f}|f1 {f1:.3f}|tp {tp.item()}|'
                 )
-        if (j + 1) % 2000 == 0:
+        if (j + 1) % 500 == 0:
             torch.save(detr.state_dict(), f'detr_seg_epoch_{e + 1}_batch_{j + 1}.pt')
             print(f'saved detr_seg_epoch_{e + 1}_batch_{j + 1}.pt')
 
